@@ -17,6 +17,12 @@ on:
   push:
     branches: [ master ]       # и автоматически при пуше в master
 
+# Один билд на ветку: новый пуш/запуск отменяет предыдущий незавершённый, чтобы не копились
+# параллельные сборки и не конкурировали за кэш.
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
