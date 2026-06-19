@@ -658,6 +658,7 @@ public:
                 Op::random(32),
                 Op::end_scope(),
                 Op::end_scope(),
+                Op::end_scope(),
                 Op::end_scope()
         };
         return res;

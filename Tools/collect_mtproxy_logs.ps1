@@ -178,14 +178,50 @@ if ($matches) {
 
 $analysisPath = Join-Path $sessionDir "mtproxy_analysis.txt"
 $analyzerPath = Join-Path $PSScriptRoot "analyze_mtproxy_markers.py"
+function Convert-ToWslPath {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if ($fullPath -match '^([A-Za-z]):\\(.*)$') {
+        $drive = $matches[1].ToLowerInvariant()
+        $tail = $matches[2] -replace '\\', '/'
+        return "/mnt/$drive/$tail"
+    }
+    return ($fullPath -replace '\\', '/')
+}
+
 $python = Get-Command python3 -ErrorAction SilentlyContinue
 if (-not $python) {
     $python = Get-Command python -ErrorAction SilentlyContinue
 }
 if ($python -and (Test-Path $analyzerPath)) {
-    & $python.Source $analyzerPath $markerPath 2>&1 | Tee-Object -FilePath $analysisPath | Out-Host
+    $pythonPath = $python.Source
+    & $pythonPath $analyzerPath $markerPath 2>&1 | Tee-Object -FilePath $analysisPath | Out-Host
 } else {
-    "Python was not found; skipped MTProxy marker analysis." | Set-Content -Encoding UTF8 $analysisPath
+    $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+    if ($wsl -and (Test-Path $analyzerPath)) {
+        $analyzerUnix = Convert-ToWslPath $analyzerPath
+        $markerUnix = Convert-ToWslPath $markerPath
+        $stdoutPath = Join-Path $sessionDir "mtproxy_analysis_wsl_stdout.tmp"
+        $stderrPath = Join-Path $sessionDir "mtproxy_analysis_wsl_stderr.tmp"
+        $process = Start-Process -FilePath $wsl.Source -ArgumentList @("python3", $analyzerUnix, $markerUnix) -Wait -PassThru -NoNewWindow -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+        $analysisLines = @()
+        if (Test-Path $stdoutPath) {
+            $analysisLines += Get-Content $stdoutPath
+        }
+        if (Test-Path $stderrPath) {
+            $analysisLines += Get-Content $stderrPath
+        }
+        if (-not $analysisLines) {
+            $analysisLines = @("WSL analyzer produced no output.")
+        }
+        $analysisLines | Tee-Object -FilePath $analysisPath | Out-Host
+        if ($process.ExitCode -ne 0) {
+            "WSL analyzer exited with code $($process.ExitCode)." | Add-Content -Encoding UTF8 $analysisPath
+        }
+        Remove-Item -Force -ErrorAction SilentlyContinue $stdoutPath, $stderrPath
+    } else {
+        "Python was not found; skipped MTProxy marker analysis." | Set-Content -Encoding UTF8 $analysisPath
+    }
 }
 
 "finished=$((Get-Date).ToString('o'))" | Add-Content -Encoding UTF8 $metaPath
