@@ -153,6 +153,11 @@ def main() -> int:
         "proxy startup scheduling must use a cancellable nonblocking Timer",
     )
     require(
+        "MT_PROXY_HANDSHAKE_ADMISSION_ENABLED = false" in cpp
+        and "admission_disabled" in cpp,
+        "FakeTLS endpoint admission controller must stay disabled in this diagnostic build",
+    )
+    require(
         "MtProxyHandshakeEndpointState" in cpp
         and "proxyHandshakeSchedulerMutex" in cpp
         and "activeHandshakes" in cpp

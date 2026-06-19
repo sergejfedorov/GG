@@ -56,6 +56,7 @@ static constexpr int32_t MT_PROXY_HANDSHAKE_PRIORITY_PROXY_CHECK = 5;
 static constexpr int32_t MT_PROXY_HANDSHAKE_TIMER_ADMISSION = 1;
 static constexpr int32_t MT_PROXY_HANDSHAKE_TIMER_FREEZE = 2;
 static constexpr int64_t MT_PROXY_HANDSHAKE_FREEZE_TIMEOUT_MS = 4500;
+static constexpr bool MT_PROXY_HANDSHAKE_ADMISSION_ENABLED = false;
 static constexpr bool MT_PROXY_HANDSHAKE_FREEZE_COOLDOWN_ENABLED = false;
 
 struct MtProxyHandshakeQueuedRequest {
@@ -1007,6 +1008,19 @@ ConnectionSocket::~ConnectionSocket() {
 
 bool ConnectionSocket::scheduleProxyHandshakeAdmissionIfNeeded(bool ipv6) {
     if (proxyAuthState < 10 || socketFd < 0) {
+        return false;
+    }
+    if (!MT_PROXY_HANDSHAKE_ADMISSION_ENABLED) {
+        if (proxyHandshakeAdmissionKey.empty()) {
+            proxyHandshakeAdmissionKey = currentAddress + ":" + std::to_string((unsigned int) currentPort) + ":" + currentSecretDomain;
+        }
+        proxyHandshakeAdmissionQueued = false;
+        proxyHandshakeAdmissionActive = true;
+        proxyHandshakeAdmissionReady = false;
+        proxyHandshakeAdmissionIpv6 = ipv6;
+        proxyHandshakeAdmissionStartTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMonotonicMillis();
+        proxyHandshakeClientHelloSentTime = 0;
+        if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup admission_disabled key=%s priority=%d", this, proxyHandshakeAdmissionKey.c_str(), proxyHandshakeAdmissionPriority);
         return false;
     }
     if (proxyHandshakeAdmissionPriority == MT_PROXY_HANDSHAKE_PRIORITY_BYPASS) {
