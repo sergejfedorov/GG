@@ -60,8 +60,8 @@ def main() -> None:
     )
     require(
         "jint mtProxyClientHelloFragmentation" in wrapper_cpp
-        and "Ljava/lang/String;IIIII)V" in wrapper_cpp
-        and "IIIIILorg/telegram/tgnet/RequestTimeDelegate;)J" in wrapper_cpp,
+        and "Ljava/lang/String;IIIIII)V" in wrapper_cpp
+        and "IIIIIILorg/telegram/tgnet/RequestTimeDelegate;)J" in wrapper_cpp,
         "JNI signatures must carry the extra ClientHello fragmentation integer",
     )
     require(

@@ -53,9 +53,16 @@ import java.util.Locale;
 public class SharedConfig {
     /**
      * V2: Ping and check time serialized
+     * V3: WSS transport metadata serialized separately from SOCKS5/MTProto fields
      */
     private final static int PROXY_SCHEMA_V2 = 2;
-    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V2;
+    private final static int PROXY_SCHEMA_V3 = 3;
+    private final static int PROXY_CURRENT_SCHEMA_VERSION = PROXY_SCHEMA_V3;
+
+    public static final int TRANSPORT_LEGACY_PROXY = 0;
+    public static final int TRANSPORT_WSS_OFFICIAL = 1;
+    public static final int TRANSPORT_WSS_CUSTOM = 2;
+    public static final int TRANSPORT_WSS_SOCKS5 = 3;
 
     public final static int PASSCODE_TYPE_PIN = 0,
             PASSCODE_TYPE_PASSWORD = 1;
@@ -322,6 +329,12 @@ public class SharedConfig {
     public static int mtProxyConnectionPatternMode;
     public static int mtProxyRecordSizingMode;
     public static int mtProxyTimingMode;
+    public static int mtProxyStartupCoverMode;
+    public static int wssTransportMode;
+    public static String wssHost = "";
+    public static int wssPort = 443;
+    public static String wssPath = "/apiws";
+    public static boolean wssUseForMiniApps;
     public static int messageSeenHintCount;
     public static int emojiInteractionsHintCount;
     public static int dayNightThemeSwitchHintCount;
@@ -376,6 +389,29 @@ public class SharedConfig {
         loadConfig();
     }
 
+    public static int normalizeWssTransportMode(int mode) {
+        if (mode >= TRANSPORT_LEGACY_PROXY && mode <= TRANSPORT_WSS_SOCKS5) {
+            return mode;
+        }
+        return TRANSPORT_LEGACY_PROXY;
+    }
+
+    public static String normalizeWssPath(String path) {
+        if (TextUtils.isEmpty(path)) {
+            return "/apiws";
+        }
+        return path.charAt(0) == '/' ? path : "/" + path;
+    }
+
+    public static void setWssTransport(int mode, String host, int port, String path, boolean miniApps) {
+        wssTransportMode = normalizeWssTransportMode(mode);
+        wssHost = host != null ? host : "";
+        wssPort = port > 0 && port <= 65535 ? port : 443;
+        wssPath = normalizeWssPath(path);
+        wssUseForMiniApps = miniApps;
+        saveConfig();
+    }
+
     public static class ProxyInfo {
 
         public String address;
@@ -383,6 +419,11 @@ public class SharedConfig {
         public String username;
         public String password;
         public String secret;
+        public int transportMode = TRANSPORT_LEGACY_PROXY;
+        public String wssHost = "";
+        public int wssPort = 443;
+        public String wssPath = "/apiws";
+        public boolean wssUseForMiniApps;
 
         public long proxyCheckPingId;
         public long ping;
@@ -410,9 +451,20 @@ public class SharedConfig {
             if (this.secret == null) {
                 this.secret = "";
             }
+            this.wssHost = this.address;
+            this.wssPort = this.port > 0 ? this.port : 443;
         }
 
         public String getLink() {
+            if (isWssTransport()) {
+                StringBuilder url = new StringBuilder("zastogram://wss?");
+                try {
+                    url.append("server=").append(URLEncoder.encode(wssHost, "UTF-8")).append("&").append("port=").append(wssPort);
+                    url.append("&path=").append(URLEncoder.encode(wssPath, "UTF-8"));
+                    url.append("&mode=").append(transportMode);
+                } catch (UnsupportedEncodingException ignored) {}
+                return url.toString();
+            }
             StringBuilder url = new StringBuilder(!TextUtils.isEmpty(secret) ? "https://t.me/proxy?" : "https://t.me/socks?");
             try {
                 url.append("server=").append(URLEncoder.encode(address, "UTF-8")).append("&").append("port=").append(port);
@@ -427,6 +479,14 @@ public class SharedConfig {
                 }
             } catch (UnsupportedEncodingException ignored) {}
             return url.toString();
+        }
+
+        public boolean isWssTransport() {
+            return transportMode == TRANSPORT_WSS_OFFICIAL || transportMode == TRANSPORT_WSS_CUSTOM || transportMode == TRANSPORT_WSS_SOCKS5;
+        }
+
+        public boolean isSocks5OverWss() {
+            return transportMode == TRANSPORT_WSS_SOCKS5;
         }
     }
 
@@ -477,6 +537,12 @@ public class SharedConfig {
                 editor.putBoolean("mtProxyHandshakeAdmission", mtProxyConnectionPatternMode != 0);
                 editor.putInt("mtProxyRecordSizingMode", mtProxyRecordSizingMode);
                 editor.putInt("mtProxyTimingMode", mtProxyTimingMode);
+                editor.putInt("mtProxyStartupCoverMode", mtProxyStartupCoverMode);
+                editor.putInt("wssTransportMode", wssTransportMode);
+                editor.putString("wssHost", wssHost != null ? wssHost : "");
+                editor.putInt("wssPort", wssPort);
+                editor.putString("wssPath", wssPath != null ? wssPath : "/apiws");
+                editor.putBoolean("wssUseForMiniApps", wssUseForMiniApps);
 
                 if (pendingAppUpdate != null) {
                     try {
@@ -556,6 +622,18 @@ public class SharedConfig {
             }
             mtProxyRecordSizingMode = preferences.getInt("mtProxyRecordSizingMode", 0);
             mtProxyTimingMode = preferences.getInt("mtProxyTimingMode", 0);
+            mtProxyStartupCoverMode = preferences.getInt("mtProxyStartupCoverMode", 0);
+            if (mtProxyStartupCoverMode < 0 || mtProxyStartupCoverMode > 2) {
+                mtProxyStartupCoverMode = 0;
+            }
+            wssTransportMode = normalizeWssTransportMode(preferences.getInt("wssTransportMode", TRANSPORT_LEGACY_PROXY));
+            wssHost = preferences.getString("wssHost", "");
+            wssPort = preferences.getInt("wssPort", 443);
+            if (wssPort <= 0 || wssPort > 65535) {
+                wssPort = 443;
+            }
+            wssPath = normalizeWssPath(preferences.getString("wssPath", "/apiws"));
+            wssUseForMiniApps = preferences.getBoolean("wssUseForMiniApps", false);
             String authKeyString = preferences.getString("pushAuthKey", null);
             if (!TextUtils.isEmpty(authKeyString)) {
                 pushAuthKey = Base64.decode(authKeyString, Base64.DEFAULT);
@@ -1454,7 +1532,7 @@ public class SharedConfig {
             if (count == -1) { // V2 or newer
                 int version = data.readByte(false);
 
-                if (version == PROXY_SCHEMA_V2) {
+                if (version == PROXY_SCHEMA_V2 || version == PROXY_SCHEMA_V3) {
                     count = data.readInt32(false);
 
                     for (int i = 0; i < count; i++) {
@@ -1467,6 +1545,16 @@ public class SharedConfig {
 
                         info.ping = data.readInt64(false);
                         info.availableCheckTime = data.readInt64(false);
+                        if (version >= PROXY_SCHEMA_V3) {
+                            info.transportMode = normalizeWssTransportMode(data.readInt32(false));
+                            info.wssHost = data.readString(false);
+                            info.wssPort = data.readInt32(false);
+                            info.wssPath = normalizeWssPath(data.readString(false));
+                            info.wssUseForMiniApps = data.readBool(false);
+                            if (info.wssPort <= 0 || info.wssPort > 65535) {
+                                info.wssPort = 443;
+                            }
+                        }
 
                         proxyList.add(0, info);
                         if (currentProxy == null && !TextUtils.isEmpty(proxyAddress)) {
@@ -1530,6 +1618,11 @@ public class SharedConfig {
 
             serializedData.writeInt64(info.ping);
             serializedData.writeInt64(info.availableCheckTime);
+            serializedData.writeInt32(info.transportMode);
+            serializedData.writeString(info.wssHost != null ? info.wssHost : "");
+            serializedData.writeInt32(info.wssPort);
+            serializedData.writeString(info.wssPath != null ? info.wssPath : "/apiws");
+            serializedData.writeBool(info.wssUseForMiniApps);
         }
         SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         preferences.edit().putString("proxy_list", Base64.encodeToString(serializedData.toByteArray(), Base64.NO_WRAP)).apply();

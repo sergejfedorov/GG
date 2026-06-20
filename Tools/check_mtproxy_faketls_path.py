@@ -242,29 +242,29 @@ def main() -> int:
         "Java must choose a sticky profile from endpoint, secret, and local salt",
     )
     require(
-        "native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode)" in java
-        and "native_setProxySettings(a, address, port, username, password, secret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode)" in java,
+        "native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode, mtProxyStartupCoverMode)" in java
+        and "native_setProxySettings(a, address, port, username, password, secret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode, mtProxyStartupCoverMode)" in java,
         "Java must pass the selected MTProxy TLS profile into native proxy settings",
     )
     require(
-        "native_checkProxy(currentAccount, address, port, username, password, secret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode, requestTimeDelegate)" in java,
+        "native_checkProxy(currentAccount, address, port, username, password, secret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode, mtProxyStartupCoverMode, requestTimeDelegate)" in java,
         "Java proxy checks must use the same selected MTProxy TLS profile as real connections",
     )
     require(
-        "native_setProxySettings(int currentAccount, String address, int port, String username, String password, String secret, int mtProxyTlsProfile, int mtProxyClientHelloFragmentation, int mtProxyConnectionPatternMode, int mtProxyRecordSizingMode, int mtProxyTimingMode)" in java,
+        "native_setProxySettings(int currentAccount, String address, int port, String username, String password, String secret, int mtProxyTlsProfile, int mtProxyClientHelloFragmentation, int mtProxyConnectionPatternMode, int mtProxyRecordSizingMode, int mtProxyTimingMode, int mtProxyStartupCoverMode)" in java,
         "Java native_setProxySettings declaration must include the MTProxy TLS profile",
     )
     require(
-        'native_setProxySettings", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIII)V"' in wrapper,
+        'native_setProxySettings", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIII)V"' in wrapper,
         "JNI native_setProxySettings signature must include the MTProxy TLS profile int",
     )
     require(
-        'native_checkProxy", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIILorg/telegram/tgnet/RequestTimeDelegate;)J"' in wrapper,
+        'native_checkProxy", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIIILorg/telegram/tgnet/RequestTimeDelegate;)J"' in wrapper,
         "JNI native_checkProxy signature must include the MTProxy TLS profile int",
     )
     require(
-        "setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode)" in manager_header
-        and "ConnectionsManager::setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode)" in manager_cpp,
+        "setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode)" in manager_header
+        and "ConnectionsManager::setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode)" in manager_cpp,
         "ConnectionsManager::setProxySettings must store the MTProxy TLS profile",
     )
     require(
@@ -284,8 +284,9 @@ def main() -> int:
         and "int32_t mtProxyConnectionPatternMode" in proxy_check_header
         and "int32_t mtProxyRecordSizingMode" in proxy_check_header
         and "int32_t mtProxyTimingMode" in proxy_check_header
-        and "setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode)" in header
-        and "connection->setOverrideProxy(proxyCheckInfo->address, proxyCheckInfo->port, proxyCheckInfo->username, proxyCheckInfo->password, proxyCheckInfo->secret, proxyCheckInfo->mtProxyTlsProfile, proxyCheckInfo->mtProxyClientHelloFragmentation, proxyCheckInfo->mtProxyConnectionPatternMode, proxyCheckInfo->mtProxyRecordSizingMode, proxyCheckInfo->mtProxyTimingMode)" in manager_cpp,
+        and "int32_t mtProxyStartupCoverMode" in proxy_check_header
+        and "setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode)" in header
+        and "connection->setOverrideProxy(proxyCheckInfo->address, proxyCheckInfo->port, proxyCheckInfo->username, proxyCheckInfo->password, proxyCheckInfo->secret, proxyCheckInfo->mtProxyTlsProfile, proxyCheckInfo->mtProxyClientHelloFragmentation, proxyCheckInfo->mtProxyConnectionPatternMode, proxyCheckInfo->mtProxyRecordSizingMode, proxyCheckInfo->mtProxyTimingMode, proxyCheckInfo->mtProxyStartupCoverMode)" in manager_cpp,
         "Proxy check override connections must carry the selected MTProxy TLS profile",
     )
     require(

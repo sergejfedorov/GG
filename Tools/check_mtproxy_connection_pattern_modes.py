@@ -54,7 +54,7 @@ def main() -> None:
         "private static int resolveMtProxyConnectionPatternMode()" in connections
         and "SharedConfig.mtProxyConnectionPatternMode" in connections
         and "mtProxyConnectionPatternMode" in connections
-        and "native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode)" in connections,
+        and "native_setProxySettings(currentAccount, proxyAddress, proxyPort, proxyUsername, proxyPassword, proxySecret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode, mtProxyStartupCoverMode)" in connections,
         "Java must pass the selected connection-pattern mode into native proxy settings",
     )
     require(
@@ -81,7 +81,7 @@ def main() -> None:
         "int32_t mtProxyConnectionPatternMode" in proxy_check
         and "overrideProxyConnectionPatternMode" in socket_h
         and "currentConnectionPatternMode" in socket_h
-        and "setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode)" in socket_h,
+        and "setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode)" in socket_h,
         "proxy-check override sockets must carry the same connection-pattern mode as real sockets",
     )
     require(

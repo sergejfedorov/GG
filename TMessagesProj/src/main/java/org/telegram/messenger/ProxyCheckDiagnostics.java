@@ -78,10 +78,7 @@ public class ProxyCheckDiagnostics {
         if (hasFreshFailure(proxyInfo)) {
             return shortDiagnosticText(proxyInfo.lastCheckDiagnostic);
         }
-        if (!TextUtils.isEmpty(proxyInfo.secret)) {
-            return LocaleController.getString(R.string.ProxyStatusNotRespondingNow);
-        }
-        return LocaleController.getString(R.string.Unavailable);
+        return LocaleController.getString(R.string.ProxyStatusUnchecked);
     }
 
     public static String headerStatusText(SharedConfig.ProxyInfo proxyInfo, boolean proxyEnabled, int currentConnectionState) {
@@ -126,9 +123,7 @@ public class ProxyCheckDiagnostics {
         if (proxyInfo.available && ProxyCheckScheduler.isFresh(proxyInfo)) {
             return Theme.key_windowBackgroundWhiteGreenText;
         }
-        return hasFreshFailure(proxyInfo) || TextUtils.isEmpty(proxyInfo.secret)
-                ? Theme.key_text_RedRegular
-                : Theme.key_windowBackgroundWhiteGrayText2;
+        return hasFreshFailure(proxyInfo) ? Theme.key_text_RedRegular : Theme.key_windowBackgroundWhiteGrayText2;
     }
 
     public static String diagnosticText(String diagnostic) {

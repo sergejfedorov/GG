@@ -11,7 +11,9 @@
 
 #include <sys/epoll.h>
 #include <netinet/in.h>
+#include <memory>
 #include <string>
+#include "WssTransport.h"
 
 class NativeByteBuffer;
 class ConnectionsManager;
@@ -19,7 +21,6 @@ class ByteStream;
 class EventObject;
 class ByteArray;
 class Timer;
-
 class ConnectionSocket {
 
 public:
@@ -28,12 +29,12 @@ public:
 
     void writeBuffer(uint8_t *data, uint32_t size);
     void writeBuffer(NativeByteBuffer *buffer);
-    void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType);
+    void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, int32_t datacenterId = 0, bool mediaConnection = false);
     void setTimeout(time_t timeout);
     time_t getTimeout();
     bool isDisconnected();
     void dropConnection();
-    void setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode);
+    void setOverrideProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode);
     void onHostNameResolved(std::string host, std::string ip, bool ipv6);
     void setMtProxyHandshakePriority(int32_t priority);
     const char *getProxyCheckDiagnostic();
@@ -59,6 +60,7 @@ protected:
     int32_t overrideProxyConnectionPatternMode = 0;
     int32_t overrideProxyRecordSizingMode = 0;
     int32_t overrideProxyTimingMode = 0;
+    int32_t overrideProxyStartupCoverMode = 0;
 
 private:
     ByteStream *outgoingByteStream = nullptr;
@@ -88,6 +90,11 @@ private:
     int32_t currentConnectionPatternMode = 0;
     int32_t currentRecordSizingMode = 0;
     int32_t currentTimingMode = 0;
+    int32_t currentStartupCoverMode = 0;
+    int64_t startupCoverStartTime = 0;
+    uint32_t startupCoverFrameCount = 0;
+    bool startupCoverStartedLogged = false;
+    bool startupCoverEndedLogged = false;
     std::string currentProxyTlsProfileKey;
     std::string proxyCheckDiagnostic = "tcp_not_connected";
 
@@ -114,6 +121,11 @@ private:
     int8_t tlsState = 0;
     bool mtproxyFirstTlsFrameSentLogged = false;
     bool mtproxyFirstTlsDataReceivedLogged = false;
+    bool currentTransportWss = false;
+    int32_t currentDatacenterId = 0;
+    bool currentMediaConnection = false;
+    WssRouteConfig currentWssRoute;
+    std::unique_ptr<WssTransport> currentWssTransport;
 
     uint8_t proxyAuthState = 0;
     Timer *proxyHandshakeAdmissionTimer = nullptr;
@@ -133,6 +145,8 @@ private:
     void closeSocket(int32_t reason, int32_t error);
     void openConnectionInternal(bool ipv6);
     void adjustWriteOp();
+    bool isCurrentTransportWss();
+    bool dispatchWssPayloads(std::vector<std::vector<uint8_t>> &payloads);
     bool scheduleProxyHandshakeAdmissionIfNeeded(bool ipv6);
     void scheduleProxyHandshakeAdmissionTimer(uint32_t delay, int32_t mode, bool ipv6);
     void grantProxyHandshakeAdmission(bool ipv6, uint32_t generation, uint32_t delay, const char *reason);
@@ -151,6 +165,10 @@ private:
     bool sendPendingTlsFrame();
     uint32_t nextMtProxyTlsRecordPayloadSize(uint32_t remaining);
     bool scheduleMtProxyDataTimingIfNeeded();
+    void startMtProxyStartupCover();
+    bool mtProxyStartupCoverActive();
+    int32_t effectiveMtProxyRecordSizingMode();
+    int32_t effectiveMtProxyTimingMode();
 
     friend class EventObject;
     friend class ConnectionsManager;

@@ -77,9 +77,9 @@ def main() -> None:
         "proxy settings UI must expose selectable timing modes",
     )
     require(
-        'native_setProxySettings", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIII)V"' in wrapper
-        and 'native_checkProxy", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIILorg/telegram/tgnet/RequestTimeDelegate;)J"' in wrapper,
-        "JNI signatures must carry profile, fragmentation, admission, record sizing, and timing integers",
+        'native_setProxySettings", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIII)V"' in wrapper
+        and 'native_checkProxy", "(ILjava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IIIIIILorg/telegram/tgnet/RequestTimeDelegate;)J"' in wrapper,
+        "JNI signatures must carry profile, fragmentation, admission, record sizing, timing, and startup-cover integers",
     )
     require(
         "int32_t proxyRecordSizingMode = 0" in manager_h

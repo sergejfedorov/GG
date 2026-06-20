@@ -44,6 +44,7 @@ checks = [
     (SCHEDULER, "hasActiveListenerForProxyInfo", "listener cancellation must not clear shared ProxyInfo state while another listener still owns it"),
     (SCHEDULER, "clearCancelledListenerState", "listener cancellation must clear detached UI ProxyInfo state only after checking remaining listeners"),
     (SCHEDULER, "clearDetachedCheckState", "scheduler must recover stale ProxyInfo.checking state when there is no queued or active request"),
+    (SCHEDULER, "clearDetachedCheckStates", "scheduler must let passive UI screens clear stale checking state without starting checks"),
     (SCHEDULER, "clearTransientState", "scheduler must clear checking/native ping state without rewriting measured availability"),
     (SCHEDULER, "cancelOwner", "scheduler must let screens cancel queued checks"),
     (SCHEDULER, "cancelProxyCheck", "scheduler must cancel the native active check when owner is cancelled"),
@@ -56,17 +57,17 @@ checks = [
     (SCHEDULER, "cancel_owner", "scheduler must log owner cancellation for UI diagnostics"),
     (SCHEDULER, "proxyInfo.proxyCheckPingId == 0", "scheduler must fail fast if native checkProxy refuses to start"),
     (SCHEDULER, "force", "scheduler must support forced manual checks without abusing stale-cache state"),
-    (PROXY_LIST, "ProxyCheckScheduler.enqueueStale", "proxy list must use the shared scheduler"),
-    (PROXY_LIST, "ProxyCheckScheduler.hasOwnerPending(this)", "proxy list must not start another full sweep while its previous sweep is still pending"),
+    (PROXY_LIST, "ProxyCheckScheduler.clearDetachedCheckStates", "proxy list must clear stale check state without starting a full sweep"),
     (PROXY_LIST, "ProxyCheckScheduler.isFresh", "proxy list must use the shared freshness policy"),
     (PROXY_LIST, "markConnectedCurrentProxyIfNeeded", "proxy list must mark connected-state observations outside cell rendering"),
     (PROXY_LIST, "ProxyCheckScheduler.cancelOwner(this)", "proxy list must cancel queued checks on destroy"),
-    (ROTATION, "ProxyCheckScheduler.enqueueStale", "proxy rotation must use the shared scheduler"),
     (ROTATION, "ProxyCheckScheduler.isFresh", "proxy rotation must not switch to stale availability results"),
     (ROTATION, "ProxyCheckScheduler.markConnected(SharedConfig.currentProxy)", "proxy rotation must share connected-state freshness with the scheduler"),
+    (ROTATION, "selectFallbackCandidate", "proxy rotation must try one unchecked endpoint through a real connection instead of full-list proxy checks"),
+    (ROTATION, "switch fallback endpoint=", "proxy rotation must log one-at-a-time fallback switches distinctly"),
     (ROTATION, "isCheckScheduled", "proxy rotation must not schedule duplicate delayed sweeps"),
     (ROTATION, "proxy_rotation ", "proxy rotation must emit stable diagnostics"),
-    (ROTATION, "onProxyCheckQueueFinished", "proxy rotation must wait for the scheduler drain signal"),
+    (ROTATION, "scheduled_check skipped background_disabled", "proxy rotation must not launch a full proxy-check sweep while connection is already trying"),
 ]
 
 failed = []
@@ -141,6 +142,10 @@ if "currentInfo.availableCheckTime = 0" in PROXY_LIST.read_text(encoding="utf-8"
     print(f" - {PROXY_LIST.relative_to(ROOT)}: connected current proxy must not be marked stale by the UI")
     sys.exit(1)
 proxy_list_text = PROXY_LIST.read_text(encoding="utf-8")
+if "ProxyCheckScheduler.enqueueStale(currentAccount, proxyList" in proxy_list_text:
+    print("Proxy check scheduler guard failed:")
+    print(f" - {PROXY_LIST.relative_to(ROOT)}: opening the proxy list must not start a full proxy-check sweep")
+    sys.exit(1)
 update_status_start = proxy_list_text.find("public void updateStatus()")
 update_status_end = proxy_list_text.find("public void setSelectionEnabled", update_status_start)
 update_status_body = proxy_list_text[update_status_start:update_status_end]
@@ -211,6 +216,20 @@ if "rememberCheckResult(request, callbackTime, normalizedDiagnostic);" in schedu
         sys.exit(1)
 
 rotation_text = ROTATION.read_text(encoding="utf-8")
+if "ProxyCheckScheduler.enqueueStale(currentAccount, SharedConfig.proxyList" in rotation_text:
+    print("Proxy check scheduler guard failed:")
+    print(f" - {ROTATION.relative_to(ROOT)}: proxy rotation must not start a full proxy-check sweep")
+    sys.exit(1)
+for old_rotation_proxy_check_hook in (
+    "rotationCheckCallback",
+    "onProxyCheckQueueFinished",
+    "NotificationCenter.proxyCheckDone",
+    "isCurrentlyChecking",
+):
+    if old_rotation_proxy_check_hook in rotation_text:
+        print("Proxy check scheduler guard failed:")
+        print(f" - {ROTATION.relative_to(ROOT)}: proxy rotation must not keep old proxy-check hook {old_rotation_proxy_check_hook}")
+        sys.exit(1)
 
 
 def require_cancel_order(marker, label):
@@ -228,8 +247,6 @@ def require_cancel_order(marker, label):
     ordered_needles = [
         "AndroidUtilities.cancelRunOnUIThread(checkProxyAndSwitchRunnable);",
         "isCheckScheduled = false;",
-        "isCurrentlyChecking = false;",
-        "ProxyCheckScheduler.cancelOwner(this);",
     ]
     last_index = -1
     for needle in ordered_needles:

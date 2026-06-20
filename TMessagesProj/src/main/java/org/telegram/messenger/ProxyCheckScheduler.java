@@ -78,6 +78,15 @@ public class ProxyCheckScheduler {
         return added;
     }
 
+    public static void clearDetachedCheckStates(List<SharedConfig.ProxyInfo> proxyList, String reason) {
+        if (proxyList == null) {
+            return;
+        }
+        for (int i = 0, count = proxyList.size(); i < count; i++) {
+            clearDetachedCheckState(proxyList.get(i), reason);
+        }
+    }
+
     public static void cancelOwner(Object owner) {
         if (owner == null) {
             return;

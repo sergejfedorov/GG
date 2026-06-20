@@ -386,7 +386,7 @@ void Connection::connect() {
     wasConnected = false;
     hasSomeDataSinceLastConnect = false;
     setMtProxyHandshakePriority(mtProxyHandshakePriorityForConnectionType(connectionType));
-    openConnection(hostAddress, hostPort, secret, ipv6 != 0, ConnectionsManager::getInstance(currentDatacenter->instanceNum).currentNetworkType);
+    openConnection(hostAddress, hostPort, secret, ipv6 != 0, ConnectionsManager::getInstance(currentDatacenter->instanceNum).currentNetworkType, currentDatacenter->getDatacenterId(), isMediaConnection);
     if (connectionType == ConnectionTypeProxy) {
         setTimeout(5);
     } else if (connectionType == ConnectionTypePush) {
@@ -468,6 +468,7 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
     uint32_t packetLength;
 
     uint8_t useSecret = 0;
+    bool forceProxyLikeInitForWss = isCurrentTransportWss();
     if (!firstPacketSent) {
         if (!overrideProxyAddress.empty()) {
             if (!overrideProxySecret.empty()) {
@@ -555,7 +556,7 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
                     bytes[56] = bytes[57] = bytes[58] = bytes[59] = 0xee;
                 }
 
-                if (useSecret != 0) {
+                if (useSecret != 0 || forceProxyLikeInitForWss) {
                     int16_t datacenterId;
                     if (isMediaConnection) {
                         if (ConnectionsManager::getInstance(currentDatacenter->instanceNum).testBackend) {

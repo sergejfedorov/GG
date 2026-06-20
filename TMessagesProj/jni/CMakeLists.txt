@@ -194,6 +194,7 @@ add_library(tgnet STATIC
         tgnet/ConnectionSession.cpp
         tgnet/ConnectionsManager.cpp
         tgnet/ConnectionSocket.cpp
+        tgnet/WssTransport.cpp
         tgnet/Datacenter.cpp
         tgnet/EventObject.cpp
         tgnet/FileLog.cpp
@@ -214,6 +215,7 @@ target_compile_definitions(tgnet PUBLIC
 target_include_directories(tgnet PUBLIC
         boringssl/include/)
 target_link_libraries(tgnet
+        ssl
         crypto)
 
 #rlottie

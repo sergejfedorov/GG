@@ -34,6 +34,7 @@
 #include "Config.h"
 #include "ProxyCheckInfo.h"
 #include "Handshake.h"
+#include "WssTransport.h"
 
 #ifdef ANDROID
 #include <jni.h>
@@ -3514,6 +3515,13 @@ static int32_t normalizeMtProxyTimingMode(int32_t mtProxyTimingMode) {
     return 0;
 }
 
+static int32_t normalizeMtProxyStartupCoverMode(int32_t mtProxyStartupCoverMode) {
+    if (mtProxyStartupCoverMode >= 0 && mtProxyStartupCoverMode <= 2) {
+        return mtProxyStartupCoverMode;
+    }
+    return 0;
+}
+
 void ConnectionsManager::updateDcSettings(uint32_t dcNum, bool workaround, bool ifLoadingTryAgain) {
     if (workaround) {
         if (updatingDcSettingsWorkaround) {
@@ -3898,21 +3906,23 @@ void ConnectionsManager::init(uint32_t version, int32_t layer, int32_t apiId, st
     }
 }
 
-void ConnectionsManager::setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode) {
-    scheduleTask([&, address, port, username, password, secret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode] {
+void ConnectionsManager::setProxySettings(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode) {
+    scheduleTask([&, address, port, username, password, secret, mtProxyTlsProfile, mtProxyClientHelloFragmentation, mtProxyConnectionPatternMode, mtProxyRecordSizingMode, mtProxyTimingMode, mtProxyStartupCoverMode] {
         std::string newSecret = decodeSecret(secret);
         int32_t newProxyTlsProfile = normalizeMtProxyTlsProfile(mtProxyTlsProfile);
         int32_t newClientHelloFragmentation = normalizeMtProxyClientHelloFragmentation(mtProxyClientHelloFragmentation);
         int32_t newConnectionPatternMode = normalizeMtProxyConnectionPatternMode(mtProxyConnectionPatternMode);
         int32_t newRecordSizingMode = normalizeMtProxyRecordSizingMode(mtProxyRecordSizingMode);
         int32_t newTimingMode = normalizeMtProxyTimingMode(mtProxyTimingMode);
+        int32_t newStartupCoverMode = normalizeMtProxyStartupCoverMode(mtProxyStartupCoverMode);
         bool secretChanged = proxySecret != newSecret;
         bool profileChanged = proxyTlsProfile != newProxyTlsProfile;
         bool clientHelloFragmentationChanged = proxyClientHelloFragmentation != newClientHelloFragmentation;
         bool connectionPatternChanged = proxyConnectionPatternMode != newConnectionPatternMode;
         bool recordSizingChanged = proxyRecordSizingMode != newRecordSizingMode;
         bool timingModeChanged = proxyTimingMode != newTimingMode;
-        bool reconnect = proxyAddress != address || proxyPort != port || username != proxyUser || proxyPassword != password || secretChanged || profileChanged || clientHelloFragmentationChanged || connectionPatternChanged || recordSizingChanged || timingModeChanged;
+        bool startupCoverChanged = proxyStartupCoverMode != newStartupCoverMode;
+        bool reconnect = proxyAddress != address || proxyPort != port || username != proxyUser || proxyPassword != password || secretChanged || profileChanged || clientHelloFragmentationChanged || connectionPatternChanged || recordSizingChanged || timingModeChanged || startupCoverChanged;
         proxyAddress = address;
         proxyPort = port;
         proxyUser = username;
@@ -3923,6 +3933,7 @@ void ConnectionsManager::setProxySettings(std::string address, uint16_t port, st
         proxyConnectionPatternMode = normalizeMtProxyConnectionPatternMode(mtProxyConnectionPatternMode);
         proxyRecordSizingMode = normalizeMtProxyRecordSizingMode(mtProxyRecordSizingMode);
         proxyTimingMode = normalizeMtProxyTimingMode(mtProxyTimingMode);
+        proxyStartupCoverMode = normalizeMtProxyStartupCoverMode(mtProxyStartupCoverMode);
         if (!proxyAddress.empty() && connectionState == ConnectionStateConnecting) {
             connectionState = ConnectionStateConnectingViaProxy;
             if (delegate != nullptr) {
@@ -3941,6 +3952,54 @@ void ConnectionsManager::setProxySettings(std::string address, uint16_t port, st
             }
         }
         if (reconnect) {
+            for (auto & datacenter : datacenters) {
+                datacenter.second->suspendConnections(true);
+            }
+            Datacenter *datacenter = getDatacenterWithId(DEFAULT_DATACENTER_ID);
+            if (datacenter != nullptr && datacenter->isHandshakingAny()) {
+                datacenter->beginHandshake(HandshakeTypeCurrent, true);
+            }
+            processRequestQueue(0, 0);
+        }
+    });
+}
+
+static int32_t normalizeWssTransportMode(int32_t mode) {
+    if (mode >= WssTransport::WSS_TRANSPORT_OFF && mode <= WssTransport::WSS_TRANSPORT_SOCKS5) {
+        return mode;
+    }
+    return WssTransport::WSS_TRANSPORT_OFF;
+}
+
+void ConnectionsManager::setWssTransportSettings(int32_t mode, int32_t gatewayMode, std::string host, uint16_t port, std::string path, bool miniApps, bool enabled) {
+    scheduleTask([&, mode, gatewayMode, host, port, path, miniApps, enabled] {
+        int32_t normalizedMode = normalizeWssTransportMode(mode);
+        int32_t normalizedGatewayMode = normalizeWssTransportMode(gatewayMode);
+        if (!enabled) {
+            normalizedMode = WssTransport::WSS_TRANSPORT_OFF;
+        }
+        std::string normalizedPath = path;
+        if (normalizedPath.empty()) {
+            normalizedPath = "/apiws";
+        } else if (normalizedPath[0] != '/') {
+            normalizedPath = "/" + normalizedPath;
+        }
+        bool wssTransportChanged = wssTransportMode != normalizedMode
+                || wssGatewayMode != normalizedGatewayMode
+                || wssHost != host
+                || wssPort != (port == 0 ? 443 : port)
+                || wssPath != normalizedPath
+                || wssUseForMiniApps != miniApps
+                || wssEnabled != enabled;
+        wssTransportMode = normalizedMode;
+        wssGatewayMode = normalizedGatewayMode;
+        wssHost = host;
+        wssPort = port == 0 ? 443 : port;
+        wssPath = normalizedPath;
+        wssUseForMiniApps = miniApps;
+        wssEnabled = enabled;
+        if (wssTransportChanged) {
+            if (LOGS_ENABLED) DEBUG_D("wss_startup settings_changed mode=%d gateway=%d host=%s port=%u path=%s miniapps=%d enabled=%d", wssTransportMode, wssGatewayMode, wssHost.c_str(), (uint32_t) wssPort, wssPath.c_str(), wssUseForMiniApps ? 1 : 0, wssEnabled ? 1 : 0);
             for (auto & datacenter : datacenters) {
                 datacenter.second->suspendConnections(true);
             }
@@ -4072,7 +4131,7 @@ void ConnectionsManager::setIpStrategy(uint8_t value) {
     });
 }
 
-int64_t ConnectionsManager::checkProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, onRequestTimeFunc requestTimeFunc, jobject ptr1) {
+int64_t ConnectionsManager::checkProxy(std::string address, uint16_t port, std::string username, std::string password, std::string secret, int32_t mtProxyTlsProfile, int32_t mtProxyClientHelloFragmentation, int32_t mtProxyConnectionPatternMode, int32_t mtProxyRecordSizingMode, int32_t mtProxyTimingMode, int32_t mtProxyStartupCoverMode, onRequestTimeFunc requestTimeFunc, jobject ptr1) {
     auto proxyCheckInfo = new ProxyCheckInfo();
     proxyCheckInfo->address = address;
     proxyCheckInfo->port = port;
@@ -4084,6 +4143,7 @@ int64_t ConnectionsManager::checkProxy(std::string address, uint16_t port, std::
     proxyCheckInfo->mtProxyConnectionPatternMode = normalizeMtProxyConnectionPatternMode(mtProxyConnectionPatternMode);
     proxyCheckInfo->mtProxyRecordSizingMode = normalizeMtProxyRecordSizingMode(mtProxyRecordSizingMode);
     proxyCheckInfo->mtProxyTimingMode = normalizeMtProxyTimingMode(mtProxyTimingMode);
+    proxyCheckInfo->mtProxyStartupCoverMode = normalizeMtProxyStartupCoverMode(mtProxyStartupCoverMode);
     proxyCheckInfo->onRequestTime = requestTimeFunc;
     proxyCheckInfo->pingId = ++lastPingProxyId;
     proxyCheckInfo->instanceNum = instanceNum;
@@ -4173,7 +4233,7 @@ void ConnectionsManager::checkProxyInternal(ProxyCheckInfo *proxyCheckInfo) {
         if (connection != nullptr) {
             proxyCheckInfo->state = ProxyCheckState::Connecting;
             proxyCheckInfo->startedAtMillis = getCurrentTimeMonotonicMillis();
-            connection->setOverrideProxy(proxyCheckInfo->address, proxyCheckInfo->port, proxyCheckInfo->username, proxyCheckInfo->password, proxyCheckInfo->secret, proxyCheckInfo->mtProxyTlsProfile, proxyCheckInfo->mtProxyClientHelloFragmentation, proxyCheckInfo->mtProxyConnectionPatternMode, proxyCheckInfo->mtProxyRecordSizingMode, proxyCheckInfo->mtProxyTimingMode);
+            connection->setOverrideProxy(proxyCheckInfo->address, proxyCheckInfo->port, proxyCheckInfo->username, proxyCheckInfo->password, proxyCheckInfo->secret, proxyCheckInfo->mtProxyTlsProfile, proxyCheckInfo->mtProxyClientHelloFragmentation, proxyCheckInfo->mtProxyConnectionPatternMode, proxyCheckInfo->mtProxyRecordSizingMode, proxyCheckInfo->mtProxyTimingMode, proxyCheckInfo->mtProxyStartupCoverMode);
             connection->suspendConnection();
             proxyCheckInfo->connectionNum = freeConnectionNum;
             auto request = new TL_ping();

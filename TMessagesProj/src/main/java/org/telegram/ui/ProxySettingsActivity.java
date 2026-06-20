@@ -77,12 +77,15 @@ public class ProxySettingsActivity extends BaseFragment {
 
     private final static int TYPE_SOCKS5 = 0;
     private final static int TYPE_MTPROTO = 1;
+    public final static int TYPE_WSS = 2;
 
     private final static int FIELD_IP = 0;
     private final static int FIELD_PORT = 1;
     private final static int FIELD_USER = 2;
     private final static int FIELD_PASSWORD = 3;
     private final static int FIELD_SECRET = 4;
+    private final static int FIELD_WSS_HOST = 5;
+    private final static int FIELD_WSS_PATH = 6;
 
     private EditTextBoldCursor[] inputFields;
     private ScrollView scrollView;
@@ -90,12 +93,13 @@ public class ProxySettingsActivity extends BaseFragment {
     private LinearLayout inputFieldsContainer;
     private HeaderCell headerCell;
     private ShadowSectionCell[] sectionCell = new ShadowSectionCell[3];
-    private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[2];
+    private TextInfoPrivacyCell[] bottomCells = new TextInfoPrivacyCell[3];
     private TextSettingsCell shareCell;
     private TextSettingsCell pasteCell;
     private ActionBarMenuItem doneItem;
-    private RadioCell[] typeCell = new RadioCell[2];
+    private RadioCell[] typeCell = new RadioCell[3];
     private int currentType = -1;
+    private int initialType = -1;
 
     private int pasteType = -1;
     private String pasteString;
@@ -172,6 +176,23 @@ public class ProxySettingsActivity extends BaseFragment {
         addingNewProxy = true;
     }
 
+    public ProxySettingsActivity(int type) {
+        super();
+        initialType = type;
+        if (type == TYPE_WSS) {
+            currentProxyInfo = new SharedConfig.ProxyInfo(SharedConfig.wssHost, SharedConfig.wssPort, "", "", "");
+            currentProxyInfo.transportMode = SharedConfig.wssTransportMode;
+            currentProxyInfo.wssHost = SharedConfig.wssHost;
+            currentProxyInfo.wssPort = SharedConfig.wssPort;
+            currentProxyInfo.wssPath = SharedConfig.normalizeWssPath(SharedConfig.wssPath);
+            currentProxyInfo.wssUseForMiniApps = SharedConfig.wssUseForMiniApps;
+            addingNewProxy = false;
+        } else {
+            currentProxyInfo = new SharedConfig.ProxyInfo("", 1080, "", "", "");
+            addingNewProxy = true;
+        }
+    }
+
     public ProxySettingsActivity(SharedConfig.ProxyInfo proxyInfo) {
         super();
         currentProxyInfo = proxyInfo;
@@ -211,9 +232,24 @@ public class ProxySettingsActivity extends BaseFragment {
                     if (getParentActivity() == null) {
                         return;
                     }
+                    if (currentType == TYPE_WSS) {
+                        int mode = SharedConfig.wssTransportMode == SharedConfig.TRANSPORT_WSS_SOCKS5
+                                ? SharedConfig.TRANSPORT_WSS_SOCKS5
+                                : SharedConfig.TRANSPORT_WSS_CUSTOM;
+                        SharedConfig.setWssTransport(
+                                mode,
+                                inputFields[FIELD_WSS_HOST].getText().toString(),
+                                Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()),
+                                inputFields[FIELD_WSS_PATH].getText().toString(),
+                                SharedConfig.wssUseForMiniApps);
+                        ConnectionsManager.setWssTransportSettings();
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+                        finishFragment();
+                        return;
+                    }
                     currentProxyInfo.address = inputFields[FIELD_IP].getText().toString();
                     currentProxyInfo.port = Utilities.parseInt(inputFields[FIELD_PORT].getText().toString());
-                    if (currentType == 0) {
+                    if (currentType == TYPE_SOCKS5) {
                         currentProxyInfo.secret = "";
                         currentProxyInfo.username = inputFields[FIELD_USER].getText().toString();
                         currentProxyInfo.password = inputFields[FIELD_PASSWORD].getText().toString();
@@ -272,14 +308,16 @@ public class ProxySettingsActivity extends BaseFragment {
 
         final View.OnClickListener typeCellClickListener = view -> setProxyType((Integer) view.getTag(), true);
 
-        for (int a = 0; a < 2; a++) {
+        for (int a = 0; a < 3; a++) {
             typeCell[a] = new RadioCell(context);
             typeCell[a].setBackground(Theme.getSelectorDrawable(true));
             typeCell[a].setTag(a);
-            if (a == 0) {
+            if (a == TYPE_SOCKS5) {
                 typeCell[a].setText(LocaleController.getString(R.string.UseProxySocks5), a == currentType, true);
+            } else if (a == TYPE_MTPROTO) {
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), a == currentType, true);
             } else {
-                typeCell[a].setText(LocaleController.getString(R.string.UseProxyTelegram), a == currentType, false);
+                typeCell[a].setText(LocaleController.getString(R.string.UseProxyWss), a == currentType, false);
             }
             linearLayout2.addView(typeCell[a], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 50));
             typeCell[a].setOnClickListener(typeCellClickListener);
@@ -298,8 +336,8 @@ public class ProxySettingsActivity extends BaseFragment {
         }
         linearLayout2.addView(inputFieldsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        inputFields = new EditTextBoldCursor[5];
-        for (int a = 0; a < 5; a++) {
+        inputFields = new EditTextBoldCursor[7];
+        for (int a = 0; a < inputFields.length; a++) {
             FrameLayout container = new FrameLayout(context);
             inputFieldsContainer.addView(container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 64));
 
@@ -318,7 +356,7 @@ public class ProxySettingsActivity extends BaseFragment {
             inputFields[a].setTransformHintToHeader(true);
             inputFields[a].setLineColors(Theme.getColor(Theme.key_windowBackgroundWhiteInputField), Theme.getColor(Theme.key_windowBackgroundWhiteInputFieldActivated), Theme.getColor(Theme.key_text_RedRegular));
 
-            if (a == FIELD_IP) {
+            if (a == FIELD_IP || a == FIELD_WSS_HOST) {
                 inputFields[a].setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_URI);
                 inputFields[a].addTextChangedListener(new TextWatcher() {
                     @Override
@@ -414,11 +452,19 @@ public class ProxySettingsActivity extends BaseFragment {
                     inputFields[a].setHintText(LocaleController.getString(R.string.UseProxySecret));
                     inputFields[a].setText(currentProxyInfo.secret);
                     break;
+                case FIELD_WSS_HOST:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyWssHost));
+                    inputFields[a].setText(currentProxyInfo.wssHost);
+                    break;
+                case FIELD_WSS_PATH:
+                    inputFields[a].setHintText(LocaleController.getString(R.string.UseProxyWssPath));
+                    inputFields[a].setText(currentProxyInfo.wssPath);
+                    break;
             }
             inputFields[a].setSelection(inputFields[a].length());
 
             inputFields[a].setPadding(0, 0, 0, 0);
-            container.addView(inputFields[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP, 17, a == FIELD_IP ? 12 : 0, 17, 0));
+            container.addView(inputFields[a], LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP, 17, a == FIELD_IP || a == FIELD_WSS_HOST ? 12 : 0, 17, 0));
 
             inputFields[a].setOnEditorActionListener((textView, i, keyEvent) -> {
                 if (i == EditorInfo.IME_ACTION_NEXT) {
@@ -436,13 +482,16 @@ public class ProxySettingsActivity extends BaseFragment {
             });
         }
 
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < 3; i++) {
             bottomCells[i] = new TextInfoPrivacyCell(context);
             bottomCells[i].setBackground(Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
             if (i == 0) {
                 bottomCells[i].setText(LocaleController.getString(R.string.UseProxyInfo));
-            } else {
+            } else if (i == 1) {
                 bottomCells[i].setText(LocaleController.getString(R.string.UseProxyTelegramInfo) + "\n\n" + LocaleController.getString(R.string.UseProxyTelegramInfo2) + "\n\n" + LocaleController.getString(R.string.UseProxyTelegramInfoStealth));
+                bottomCells[i].setVisibility(View.GONE);
+            } else {
+                bottomCells[i].setText(LocaleController.getString(R.string.UseProxyWssInfo));
                 bottomCells[i].setVisibility(View.GONE);
             }
             linearLayout2.addView(bottomCells[i], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -471,7 +520,8 @@ public class ProxySettingsActivity extends BaseFragment {
                         inputFields[i].setText(null);
                     }
                 }
-                inputFields[0].setSelection(inputFields[0].length());
+                int focusField = pasteType == TYPE_WSS ? FIELD_WSS_HOST : FIELD_IP;
+                inputFields[focusField].setSelection(inputFields[focusField].length());
                 setProxyType(pasteType, true, () -> {
                     AndroidUtilities.hideKeyboard(inputFieldsContainer.findFocus());
                     for (int i = 0; i < pasteFields.length; i++) {
@@ -479,6 +529,9 @@ public class ProxySettingsActivity extends BaseFragment {
                             continue;
                         }
                         if (pasteType == TYPE_MTPROTO && i != FIELD_USER && i != FIELD_PASSWORD) {
+                            continue;
+                        }
+                        if (pasteType == TYPE_WSS && (i == FIELD_WSS_HOST || i == FIELD_PORT || i == FIELD_WSS_PATH)) {
                             continue;
                         }
                         inputFields[i].setText(null);
@@ -500,7 +553,7 @@ public class ProxySettingsActivity extends BaseFragment {
         linearLayout2.addView(shareCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         shareCell.setOnClickListener(v -> {
             StringBuilder params = new StringBuilder();
-            String address = inputFields[FIELD_IP].getText().toString();
+            String address = currentType == TYPE_WSS ? inputFields[FIELD_WSS_HOST].getText().toString() : inputFields[FIELD_IP].getText().toString();
             String password = inputFields[FIELD_PASSWORD].getText().toString();
             String user = inputFields[FIELD_USER].getText().toString();
             String port = inputFields[FIELD_PORT].getText().toString();
@@ -516,7 +569,15 @@ public class ProxySettingsActivity extends BaseFragment {
                     }
                     params.append("port=").append(URLEncoder.encode(port, "UTF-8"));
                 }
-                if (currentType == 1) {
+                if (currentType == TYPE_WSS) {
+                    url = "zastogram://wss?";
+                    if (params.length() != 0) {
+                        params.append("&");
+                    }
+                    params.append("mode=").append(SharedConfig.wssTransportMode == SharedConfig.TRANSPORT_WSS_SOCKS5 ? "socks5" : "custom");
+                    params.append("&");
+                    params.append("path=").append(URLEncoder.encode(inputFields[FIELD_WSS_PATH].getText().toString(), "UTF-8"));
+                } else if (currentType == TYPE_MTPROTO) {
                     url = "https://t.me/proxy?";
                     if (params.length() != 0) {
                         params.append("&");
@@ -561,7 +622,7 @@ public class ProxySettingsActivity extends BaseFragment {
         checkShareDone(false);
 
         currentType = -1;
-        setProxyType(TextUtils.isEmpty(currentProxyInfo.secret) ? 0 : 1, false);
+        setProxyType(initialType == TYPE_WSS ? TYPE_WSS : TextUtils.isEmpty(currentProxyInfo.secret) ? TYPE_SOCKS5 : TYPE_MTPROTO, false);
 
         pasteType = -1;
         pasteString = null;
@@ -616,13 +677,29 @@ public class ProxySettingsActivity extends BaseFragment {
                 }
             }
 
+            if (params == null) {
+                final String[] wssStrings = {"zastogram://wss?", "tg://wss?"};
+                for (int i = 0; i < wssStrings.length; i++) {
+                    final int index = clipText.indexOf(wssStrings[i]);
+                    if (index >= 0) {
+                        pasteType = TYPE_WSS;
+                        params = clipText.substring(index + wssStrings[i].length()).split("&");
+                        break;
+                    }
+                }
+            }
+
             if (params != null) {
                 for (int i = 0; i < params.length; i++) {
                     final String[] pair = params[i].split("=");
                     if (pair.length != 2) continue;
                     switch (pair[0].toLowerCase()) {
                         case "server":
-                            pasteFields[FIELD_IP] = pair[1];
+                            if (pasteType == TYPE_WSS) {
+                                pasteFields[FIELD_WSS_HOST] = pair[1];
+                            } else {
+                                pasteFields[FIELD_IP] = pair[1];
+                            }
                             break;
                         case "port":
                             pasteFields[FIELD_PORT] = pair[1];
@@ -640,6 +717,11 @@ public class ProxySettingsActivity extends BaseFragment {
                         case "secret":
                             if (pasteType == TYPE_MTPROTO) {
                                 pasteFields[FIELD_SECRET] = pair[1];
+                            }
+                            break;
+                        case "path":
+                            if (pasteType == TYPE_WSS) {
+                                pasteFields[FIELD_WSS_PATH] = pair[1];
                             }
                             break;
                     }
@@ -689,10 +771,11 @@ public class ProxySettingsActivity extends BaseFragment {
     }
 
     private void checkShareDone(boolean animated) {
-        if (shareCell == null || doneItem == null || inputFields[FIELD_IP] == null || inputFields[FIELD_PORT] == null) {
+        if (shareCell == null || doneItem == null || inputFields[FIELD_IP] == null || inputFields[FIELD_WSS_HOST] == null || inputFields[FIELD_PORT] == null) {
             return;
         }
-        setShareDoneEnabled(inputFields[FIELD_IP].length() != 0 && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0, animated);
+        EditTextBoldCursor addressField = currentType == TYPE_WSS ? inputFields[FIELD_WSS_HOST] : inputFields[FIELD_IP];
+        setShareDoneEnabled(addressField.length() != 0 && Utilities.parseInt(inputFields[FIELD_PORT].getText().toString()) != 0, animated);
     }
 
     private void setProxyType(int type, boolean animated) {
@@ -740,21 +823,34 @@ public class ProxySettingsActivity extends BaseFragment {
 
                 TransitionManager.beginDelayedTransition(linearLayout2, transitionSet);
             }
-            if (currentType == 0) {
+            ((View) inputFields[FIELD_IP].getParent()).setVisibility(currentType == TYPE_WSS ? View.GONE : View.VISIBLE);
+            ((View) inputFields[FIELD_PORT].getParent()).setVisibility(View.VISIBLE);
+            ((View) inputFields[FIELD_WSS_HOST].getParent()).setVisibility(currentType == TYPE_WSS ? View.VISIBLE : View.GONE);
+            ((View) inputFields[FIELD_WSS_PATH].getParent()).setVisibility(currentType == TYPE_WSS ? View.VISIBLE : View.GONE);
+            bottomCells[2].setVisibility(currentType == TYPE_WSS ? View.VISIBLE : View.GONE);
+            if (currentType == TYPE_SOCKS5) {
                 bottomCells[0].setVisibility(View.VISIBLE);
                 bottomCells[1].setVisibility(View.GONE);
                 ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.VISIBLE);
                 ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.VISIBLE);
-            } else if (currentType == 1) {
+            } else if (currentType == TYPE_MTPROTO) {
                 bottomCells[0].setVisibility(View.GONE);
                 bottomCells[1].setVisibility(View.VISIBLE);
                 ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.VISIBLE);
                 ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.GONE);
                 ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.GONE);
+            } else if (currentType == TYPE_WSS) {
+                bottomCells[0].setVisibility(View.GONE);
+                bottomCells[1].setVisibility(View.GONE);
+                ((View) inputFields[FIELD_SECRET].getParent()).setVisibility(View.GONE);
+                ((View) inputFields[FIELD_PASSWORD].getParent()).setVisibility(View.GONE);
+                ((View) inputFields[FIELD_USER].getParent()).setVisibility(View.GONE);
             }
-            typeCell[0].setChecked(currentType == 0, animated);
-            typeCell[1].setChecked(currentType == 1, animated);
+            for (int i = 0; i < typeCell.length; i++) {
+                typeCell[i].setChecked(currentType == i, animated);
+            }
+            checkShareDone(animated);
         }
     }
 

@@ -186,6 +186,7 @@
     <string name="Unavailable">Unavailable</string>
     <string name="ProxyStatusConnectingSlow">Connecting, this can take a moment</string>
     <string name="ProxyStatusCheckingConnection">Checking connection...</string>
+    <string name="ProxyStatusUnchecked">Not checked</string>
     <string name="ProxyStatusNotRespondingNow">Not responding right now</string>
     <string name="ProxyStatusStartFailed">Check could not start</string>
     <string name="ProxyStatusTcpNotConnected">TCP did not connect: server or port is unreachable</string>
@@ -10945,6 +10946,11 @@
     <string name="MtProxyTimingOff">Off</string>
     <string name="MtProxyTimingGentle">Gentle</string>
     <string name="MtProxyTimingBalanced">Balanced</string>
+    <string name="MtProxyStartupCover">MTProxy startup cover</string>
+    <string name="MtProxyStartupCoverInfo">Temporarily shapes the first FakeTLS ApplicationData records after ServerHello. It does not create background checks or external web traffic.</string>
+    <string name="MtProxyStartupCoverOff">Off</string>
+    <string name="MtProxyStartupCoverSoft">Soft</string>
+    <string name="MtProxyStartupCoverStrict">Strict</string>
     <string name="MtProxyTlsProfile">JA4 / TLS profile</string>
     <string name="MtProxyTlsProfileInfo">Auto keeps one stable profile per proxy and secret. Auto rotate changes the profile only after suspicious FakeTLS failures. Manual mode forces one profile for all FakeTLS proxies.</string>
     <string name="MtProxyTlsProfileAuto">Auto</string>
@@ -10954,4 +10960,16 @@
     <string name="MtProxyTlsProfileAndroidOkHttp">OkHttp</string>
     <string name="MtProxyTlsProfileFirefox">Firefox</string>
     <string name="MtProxyTlsProfileYandex">Yandex</string>
+    <string name="WssTransportHeader">Telegram WSS transport</string>
+    <string name="WssTransportMode">WSS mode</string>
+    <string name="WssTransportOff">Off</string>
+    <string name="WssTransportOfficial">Official</string>
+    <string name="WssTransportCustom">Custom</string>
+    <string name="WssTransportSocks5">SOCKS5 WSS</string>
+    <string name="WssTransportInfo">WSS is a separate Telegram transport. Official mode uses Telegram WebSocket relays and does not require a VPS. Custom and SOCKS5 WSS require your own WebSocket gateway.</string>
+    <string name="UseProxyWss">WSS gateway</string>
+    <string name="UseProxyWssHost">WSS host</string>
+    <string name="UseProxyWssPath">WSS path</string>
+    <string name="UseProxyWssMiniApps">Mini Apps through WSS</string>
+    <string name="UseProxyWssInfo">Custom WSS is not MTProxy or SOCKS5. SOCKS5 WSS can also route Mini Apps when your gateway supports a SOCKS5 stream inside WebSocket.</string>
 </resources>
