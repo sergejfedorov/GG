@@ -63,6 +63,8 @@ def main() -> None:
     require("R.string.WssTransportMode" in proxy_list and "R.string.WssTransportInfo" in proxy_list, "Proxy list UI must label WSS as a separate transport mode")
     require("R.string.ProxyConnections" in proxy_list and "R.string.WssTransportHeader" in proxy_list, "proxy UI must keep WSS rows apart from normal proxy connections")
     require("WSS_TRANSPORT_OPTIONS" in proxy_list and "ConnectionsManager.setWssTransportSettings" in proxy_list, "changing WSS mode in GUI must re-apply native transport settings")
+    require("openWssGatewaySettingsIfNeeded" in proxy_list and "ProxySettingsActivity.createWssGateway(mode)" in proxy_list, "selecting custom WSS without a gateway must open the gateway editor instead of leaving an empty WSS mode")
+    require("getEffectiveWssTransportMode" in proxy_list and "TextUtils.isEmpty(SharedConfig.wssHost)" in proxy_list and "return ConnectionsManager.WSS_TRANSPORT_OFF" in proxy_list, "saved custom WSS with an empty gateway must behave as off in the UI")
     require("isWssTransportSelected()" in proxy_list and "useProxyRow = -1" in proxy_list and "mtProxySoftMuxRow = -1" in proxy_list, "proxy UI must hide legacy proxy toggles and MTProxy tuning while WSS transport is selected")
     require("isWssSocks5TransportSelected()" in proxy_list and "if (wssSocks5TransportSelected)" in proxy_list and "isPlainSocksProxy" in proxy_list, "SOCKS5 WSS UI must keep the SOCKS5 proxy list visible while filtering out MTProxy entries")
     require("actionBar.setSubtitle(getString(R.string.WssTransportHeader)" in proxy_list and "ProxyCheckDiagnostics.headerStatusText" in proxy_list, "proxy UI header must show WSS status instead of legacy proxy status while WSS is selected")
@@ -72,6 +74,7 @@ def main() -> None:
 
     require("TYPE_WSS" in proxy_settings and "UseProxyWss" in proxy_settings, "proxy detail UI must offer WSS as a different proxy type")
     require("FIELD_WSS_PATH" in proxy_settings and "FIELD_WSS_HOST" in proxy_settings, "WSS detail UI must expose host/path separately from MTProxy secret")
+    require("createWssGateway(int mode)" in proxy_settings and "wssEditorTransportMode" in proxy_settings, "WSS gateway editor must remember the pending custom/socks5 mode before it is saved globally")
     require("UseProxyWssInfo" in proxy_settings and "UseProxyTelegramInfoStealth" in proxy_settings, "WSS explanatory copy must be separate from MTProxy stealth copy")
     require("createWssSocksUpstream()" in proxy_settings and "createWssSocksUpstream(SharedConfig.ProxyInfo proxyInfo)" in proxy_settings and "proxyTypeLocked" in proxy_settings and "saveAsWssSocksUpstream" in proxy_settings, "WSS SOCKS5 upstream editor must hide MTProxy choices and avoid enabling legacy proxy mode")
     require("ConnectionsManager.setWssTransportSettings()" in proxy_settings and "ConnectionsManager.setProxySettings(enabled" in proxy_settings, "saving a WSS SOCKS5 upstream must reapply WSS without starting legacy proxy mode")

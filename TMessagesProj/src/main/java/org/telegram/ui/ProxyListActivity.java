@@ -499,7 +499,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 SharedConfig.saveConfig();
                 reapplyCurrentProxySettings();
             } else if (position == wssCustomGatewayRow) {
-                presentFragment(new ProxySettingsActivity(ProxySettingsActivity.TYPE_WSS));
+                presentFragment(ProxySettingsActivity.createWssGateway(SharedConfig.wssTransportMode));
             } else if (position == wssMiniAppsRow) {
                 SharedConfig.wssUseForMiniApps = !SharedConfig.wssUseForMiniApps;
                 TextCheckCell textCheckCell = (TextCheckCell) view;
@@ -713,6 +713,15 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     private void reapplyWssTransportSettings() {
         ConnectionsManager.setWssTransportSettings();
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+    }
+
+    private boolean openWssGatewaySettingsIfNeeded(int mode) {
+        mode = SharedConfig.normalizeWssTransportMode(mode);
+        if ((mode == ConnectionsManager.WSS_TRANSPORT_CUSTOM || mode == ConnectionsManager.WSS_TRANSPORT_SOCKS5) && TextUtils.isEmpty(SharedConfig.wssHost)) {
+            presentFragment(ProxySettingsActivity.createWssGateway(mode));
+            return true;
+        }
+        return false;
     }
 
     private void saveSelectedProxy(SharedConfig.ProxyInfo info, boolean enabled) {
@@ -1328,7 +1337,12 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                             if (i < 0 || i >= WSS_TRANSPORT_OPTIONS.length) {
                                 return;
                             }
-                            SharedConfig.wssTransportMode = WSS_TRANSPORT_OPTIONS[i];
+                            int mode = WSS_TRANSPORT_OPTIONS[i];
+                            if (openWssGatewaySettingsIfNeeded(mode)) {
+                                chooseView.setOptions(getWssTransportModeIndex(), getWssTransportModeLabels());
+                                return;
+                            }
+                            SharedConfig.wssTransportMode = mode;
                             if (SharedConfig.wssTransportMode != ConnectionsManager.WSS_TRANSPORT_SOCKS5) {
                                 SharedConfig.wssUseForMiniApps = false;
                             }

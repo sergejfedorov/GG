@@ -100,6 +100,7 @@ public class ProxySettingsActivity extends BaseFragment {
     private RadioCell[] typeCell = new RadioCell[3];
     private int currentType = -1;
     private int initialType = -1;
+    private int wssEditorTransportMode = SharedConfig.TRANSPORT_WSS_CUSTOM;
 
     private int pasteType = -1;
     private String pasteString;
@@ -178,6 +179,10 @@ public class ProxySettingsActivity extends BaseFragment {
         addingNewProxy = true;
     }
 
+    public static ProxySettingsActivity createWssGateway(int mode) {
+        return new ProxySettingsActivity(TYPE_WSS, mode);
+    }
+
     public static ProxySettingsActivity createWssSocksUpstream() {
         ProxySettingsActivity activity = new ProxySettingsActivity();
         activity.initialType = TYPE_SOCKS5;
@@ -195,11 +200,16 @@ public class ProxySettingsActivity extends BaseFragment {
     }
 
     public ProxySettingsActivity(int type) {
+        this(type, SharedConfig.wssTransportMode);
+    }
+
+    private ProxySettingsActivity(int type, int wssMode) {
         super();
         initialType = type;
         if (type == TYPE_WSS) {
+            wssEditorTransportMode = normalizeWssEditorTransportMode(wssMode);
             currentProxyInfo = new SharedConfig.ProxyInfo(SharedConfig.wssHost, SharedConfig.wssPort, "", "", "");
-            currentProxyInfo.transportMode = SharedConfig.wssTransportMode;
+            currentProxyInfo.transportMode = wssEditorTransportMode;
             currentProxyInfo.wssHost = SharedConfig.wssHost;
             currentProxyInfo.wssPort = SharedConfig.wssPort;
             currentProxyInfo.wssPath = SharedConfig.normalizeWssPath(SharedConfig.wssPath);
@@ -209,6 +219,12 @@ public class ProxySettingsActivity extends BaseFragment {
             currentProxyInfo = new SharedConfig.ProxyInfo("", 1080, "", "", "");
             addingNewProxy = true;
         }
+    }
+
+    private static int normalizeWssEditorTransportMode(int mode) {
+        return SharedConfig.normalizeWssTransportMode(mode) == SharedConfig.TRANSPORT_WSS_SOCKS5
+                ? SharedConfig.TRANSPORT_WSS_SOCKS5
+                : SharedConfig.TRANSPORT_WSS_CUSTOM;
     }
 
     public ProxySettingsActivity(SharedConfig.ProxyInfo proxyInfo) {
@@ -251,7 +267,7 @@ public class ProxySettingsActivity extends BaseFragment {
                         return;
                     }
                     if (currentType == TYPE_WSS) {
-                        int mode = SharedConfig.wssTransportMode == SharedConfig.TRANSPORT_WSS_SOCKS5
+                        int mode = wssEditorTransportMode == SharedConfig.TRANSPORT_WSS_SOCKS5
                                 ? SharedConfig.TRANSPORT_WSS_SOCKS5
                                 : SharedConfig.TRANSPORT_WSS_CUSTOM;
                         SharedConfig.setWssTransport(
@@ -607,7 +623,7 @@ public class ProxySettingsActivity extends BaseFragment {
                     if (params.length() != 0) {
                         params.append("&");
                     }
-                    params.append("mode=").append(SharedConfig.wssTransportMode == SharedConfig.TRANSPORT_WSS_SOCKS5 ? "socks5" : "custom");
+                    params.append("mode=").append(wssEditorTransportMode == SharedConfig.TRANSPORT_WSS_SOCKS5 ? "socks5" : "custom");
                     params.append("&");
                     params.append("path=").append(URLEncoder.encode(inputFields[FIELD_WSS_PATH].getText().toString(), "UTF-8"));
                 } else if (currentType == TYPE_MTPROTO) {
