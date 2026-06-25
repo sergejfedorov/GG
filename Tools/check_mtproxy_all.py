@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 CHECKS = [
     "check_connection_socket_state_machine_rewrite.py",
+    "check_tgnet_network_type_access.py",
     "check_mtproxy_options_contract.py",
     "check_mtproxy_policy_extraction.py",
     "check_mtproxy_faketls_path.py",
@@ -27,6 +28,7 @@ CHECKS = [
     "check_proxy_connection_live_stages.py",
     "check_proxy_control_plane_policy.py",
     "check_proxy_rotation_engine.py",
+    "check_proxy_rotation_behavior.py",
     "check_proxy_check_diagnostics.py",
     "check_proxy_ui_messages.py",
     "check_proxy_check_scheduler.py",

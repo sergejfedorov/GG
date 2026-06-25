@@ -4330,6 +4330,10 @@ time_t ConnectionSocket::getTimeout() {
     return timeout;
 }
 
+int32_t ConnectionSocket::getCurrentNetworkType() const {
+    return currentNetworkType;
+}
+
 bool ConnectionSocket::checkTimeout(int64_t now) {
     if (isCurrentMtProxyConnection()
         && currentSecretIsFakeTls

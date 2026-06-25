@@ -91,9 +91,22 @@ def main() -> int:
     require_text(ENGINE, "completeScheduledAttempt", "engine must complete scheduled attempts centrally", failures)
     require_text(ENGINE, "recordSwitch", "engine must record switches centrally", failures)
     require_text(ENGINE, "onSettingsChanged", "engine must reset transient rotation state on settings changes", failures)
+    require_text(ENGINE, "onRotationSettingsApplied", "engine must distinguish rotation-owned settings updates from external settings changes", failures)
     require_text(ENGINE, "onConnected", "engine must reset rotation cycle on successful connection", failures)
 
+    rotation_settings_method = method_body(engine, "void onRotationSettingsApplied")
+    require(
+        "cancelScheduledAttempt(\"rotation_settings_applied\")" in rotation_settings_method
+        and "cycle.reset()" not in rotation_settings_method,
+        f"{ENGINE.relative_to(ROOT)}: rotation-owned proxySettingsChanged must cancel only transient attempts without resetting rotation cycle or rate limits",
+        failures,
+    )
+
     require_text(ROTATION, "ProxyRotationEngine engine = new ProxyRotationEngine()", "controller must delegate rotation decisions to engine", failures)
+    require_text(ROTATION, "ROTATION_SETTINGS_CHANGE", "controller must tag rotation-owned proxySettingsChanged events", failures)
+    require_text(ROTATION, "postNotificationName(NotificationCenter.proxySettingsChanged, ROTATION_SETTINGS_CHANGE)", "rotation-owned settings notifications must carry a private origin marker", failures)
+    require_text(ROTATION, "isRotationOwnedSettingsChange(args)", "controller must detect rotation-owned settings notifications", failures)
+    require_text(ROTATION, "engine.onRotationSettingsApplied();", "controller must preserve rotation cycle on its own settings notifications", failures)
     require_text(ROTATION, "ProxyRotationEngine.Attempt attempt", "controller scheduled runnable must capture attempt identity", failures)
     require_text(ROTATION, "engine.beginScheduledAttempt", "controller must create scheduled attempts through engine", failures)
     require_text(ROTATION, "engine.completeScheduledAttempt(attempt", "controller must reject stale scheduled attempts through engine", failures)

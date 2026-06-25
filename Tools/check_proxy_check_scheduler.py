@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SCHEDULER = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyCheckScheduler.java"
 STORE = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyRuntimeStateStore.java"
+HEALTH = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyHealthStore.java"
+STATUS = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyStatusMirror.java"
 ENDPOINT_KEY = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyEndpointKey.java"
 POLICY = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyPhasePolicy.java"
 PROXY_LIST = ROOT / "TMessagesProj/src/main/java/org/telegram/ui/ProxyListActivity.java"
@@ -22,12 +24,12 @@ README = ROOT / "README.md"
 
 checks = [
     (SCHEDULER, "PROXY_CHECK_SPACING_MS", "scheduler must space background proxy checks"),
-    (STORE, "PROXY_CHECK_FAILURE_BACKOFF_MS", "runtime store must back off repeated failed endpoint checks"),
-    (STORE, "PROXY_CHECK_LIVE_FAILURE_DEDUP_MS", "runtime store must deduplicate repeated live terminal stages from the same native close"),
-    (STORE, "PROXY_CHECK_CONNECTED_GRACE_MS", "runtime store must avoid rechecking a recently connected endpoint"),
+    (HEALTH, "PROXY_CHECK_FAILURE_BACKOFF_MS", "health store must back off repeated failed endpoint checks"),
+    (HEALTH, "PROXY_CHECK_LIVE_FAILURE_DEDUP_MS", "health store must deduplicate repeated live terminal stages from the same native close"),
+    (HEALTH, "PROXY_CHECK_CONNECTED_GRACE_MS", "health store must avoid rechecking a recently connected endpoint"),
     (SCHEDULER, "activeRequest", "scheduler must keep a single active background check"),
-    (STORE, "EndpointState", "runtime store must keep per-endpoint check state outside mutable ProxyInfo rows"),
-    (STORE, "endpointStates", "runtime store must remember endpoint cooldowns across UI/rotation sweeps"),
+    (HEALTH, "EndpointState", "health store must keep per-endpoint check state outside mutable ProxyInfo rows"),
+    (HEALTH, "endpointStates", "health store must remember endpoint cooldowns across UI/rotation sweeps"),
     (SCHEDULER, "enqueueStale", "scheduler must expose stale-check enqueueing"),
     (SCHEDULER, "enqueueNow", "scheduler must expose priority manual checks so GUI does not bypass the shared queue"),
     (SCHEDULER, "owner == null", "scheduler must reject ownerless checks because they cannot be cancelled or drained reliably"),
@@ -36,7 +38,7 @@ checks = [
     (SCHEDULER, "markConnectionStarting", "scheduler must expose a single path for explicit current-proxy reconnect attempts"),
     (SCHEDULER, "markConnectionUsable", "scheduler must expose a concrete native-success path that clears stale endpoint backoff"),
     (SCHEDULER, "markEndpointFailure", "scheduler must expose a single path for real current-connection endpoint failures"),
-    (STORE, "nextAllowedCheckTime", "runtime store must expose a single debounce policy for UI and rotation"),
+    (STORE, "nextAllowedCheckTime", "runtime store facade must expose a single debounce policy for UI and rotation"),
     (SCHEDULER, "isEndpointBackedOff", "scheduler must expose endpoint backoff state so rotation cannot bypass it"),
     (STORE, "rememberProxyCheckResult", "runtime store must update endpoint cooldowns from measured check results"),
     (STORE, "displayDiagnosticForProxyCheck", "runtime store must translate repeated TCP failures into a user-facing network-block phase"),
@@ -63,7 +65,7 @@ checks = [
     (SCHEDULER, "clearCancelledListenerState", "listener cancellation must clear detached UI ProxyInfo state only after checking remaining listeners"),
     (SCHEDULER, "clearDetachedCheckState", "scheduler must recover stale ProxyInfo.checking state when there is no queued or active request"),
     (SCHEDULER, "clearDetachedCheckStates", "scheduler must let passive UI screens clear stale checking state without starting checks"),
-    (STORE, "clearTransientState", "runtime store must clear checking/native ping state without rewriting measured availability"),
+    (STATUS, "clearTransientState", "status mirror must clear checking/native ping state without rewriting measured availability"),
     (SCHEDULER, "cancelOwner", "scheduler must let screens cancel queued checks"),
     (SCHEDULER, "cancelProxyCheck", "scheduler must cancel the native active check when owner is cancelled"),
     (SCHEDULER, "onProxyCheckQueueFinished", "scheduler must notify owners when their sweep is drained"),
@@ -125,6 +127,8 @@ if failed:
 
 scheduler_text = SCHEDULER.read_text(encoding="utf-8")
 store_text = STORE.read_text(encoding="utf-8")
+health_text = HEALTH.read_text(encoding="utf-8")
+status_text = STATUS.read_text(encoding="utf-8")
 endpoint_key_text = ENDPOINT_KEY.read_text(encoding="utf-8")
 if "request.proxyInfo == proxyInfo" in scheduler_text:
     print("Proxy check scheduler guard failed:")
@@ -146,10 +150,10 @@ mark_connected_start = store_text.find("public static void markConnected")
 mark_connected_end = store_text.find("public static void markConnectionStarting", mark_connected_start)
 mark_connected_body = store_text[mark_connected_start:mark_connected_end]
 if (
-    "boolean preserveFreshProxyPhase = ProxyCheckDiagnostics.hasFreshFailure(proxyInfo) || hasFreshUsableSuccess(proxyInfo, now);" not in mark_connected_body
+    "boolean preserveFreshProxyPhase = ProxyCheckDiagnostics.hasFreshFailure(proxyInfo) || ProxyHealthStore.hasFreshUsableSuccess(proxyInfo, now);" not in mark_connected_body
     or "if (!preserveFreshProxyPhase)" not in mark_connected_body
-    or mark_connected_body.find("if (!preserveFreshProxyPhase)") > mark_connected_body.find("proxyInfo.lastCheckDiagnostic = ProxyCheckDiagnostics.OK")
-    or mark_connected_body.find("if (!preserveFreshProxyPhase)") > mark_connected_body.find("rememberConnected(proxyInfo, now)")
+    or mark_connected_body.find("if (!preserveFreshProxyPhase)") > mark_connected_body.find("ProxyStatusMirror.markConnected(proxyInfo, now)")
+    or mark_connected_body.find("if (!preserveFreshProxyPhase)") > mark_connected_body.find("ProxyHealthStore.rememberConnected(proxyInfo, now)")
 ):
     print("Proxy check scheduler guard failed:")
     print(f" - {STORE.relative_to(ROOT)}: generic connected-state observations must preserve fresh terminal failure or usable success phases")
@@ -158,8 +162,8 @@ mark_starting_start = store_text.find("public static void markConnectionStarting
 mark_starting_end = store_text.find("public static void markConnectionUsable", mark_starting_start)
 mark_starting_body = store_text[mark_starting_start:mark_starting_end]
 if (
-    "proxyInfo.lastCheckDiagnostic = ProxyCheckDiagnostics.CONNECT_START;" not in mark_starting_body
-    or "proxyInfo.lastCheckDiagnosticTime = now;" not in mark_starting_body
+    "ProxyStatusMirror.markConnectionStarting(proxyInfo, now);" not in mark_starting_body
+    or "ProxyHealthStore.clearUsableSuccessHold(proxyInfo);" not in mark_starting_body
 ):
     print("Proxy check scheduler guard failed:")
     print(f" - {STORE.relative_to(ROOT)}: explicit current-proxy reconnect attempts must publish connect_start with a fresh timestamp")
@@ -175,9 +179,10 @@ if "String appliedDiagnostic = shouldPreserveConnectedState(request, time) ? Pro
 if (
     "public static String appliedDiagnosticForProxyCheck" not in store_text
     or "public static boolean hasFreshConcreteProxyPhase" not in store_text
-    or "ProxyCheckDiagnostics.hasFreshFailure(proxyInfo)" not in store_text
-    or "ProxyCheckDiagnostics.hasFreshLivePhase(proxyInfo)" not in store_text
-    or "ProxyCheckDiagnostics.hasFreshEndpointCooldown(proxyInfo)" not in store_text
+    or "ProxyStatusMirror.hasFreshConcreteProxyPhase(proxyInfo)" not in store_text
+    or "ProxyCheckDiagnostics.hasFreshFailure(proxyInfo)" not in status_text
+    or "ProxyCheckDiagnostics.hasFreshLivePhase(proxyInfo)" not in status_text
+    or "ProxyCheckDiagnostics.hasFreshEndpointCooldown(proxyInfo)" not in status_text
     or "ProxyRuntimeStateStore.appliedDiagnosticForProxyCheck(request.currentAccount, listener.proxyInfo, time, displayDiagnostic)" not in scheduler_text
 ):
     print("Proxy check scheduler guard failed:")
@@ -350,9 +355,9 @@ if "ProxyRuntimeStateStore.markEndpointCooldown(proxyInfo, now);" not in should_
     print("Proxy check scheduler guard failed:")
     print(f" - {SCHEDULER.relative_to(ROOT)}: skipped endpoint backoff must publish endpoint_cooldown so GUI rows show the wait instead of looking unchecked")
     sys.exit(1)
-if "proxyInfo.lastCheckDiagnostic = ProxyCheckDiagnostics.ENDPOINT_COOLDOWN;" not in store_text:
+if "ProxyStatusMirror.markEndpointCooldown(proxyInfo, now);" not in store_text or "ProxyCheckDiagnostics.ENDPOINT_COOLDOWN" not in status_text:
     print("Proxy check scheduler guard failed:")
-    print(f" - {STORE.relative_to(ROOT)}: runtime store endpoint cooldown must use the shared diagnostic string")
+    print(f" - {STORE.relative_to(ROOT)} / {STATUS.relative_to(ROOT)}: runtime store endpoint cooldown must use the shared diagnostic string through ProxyStatusMirror")
     sys.exit(1)
 if "shouldCheck(request.proxyInfo, request.force)" not in scheduler_text:
     print("Proxy check scheduler guard failed:")
@@ -373,7 +378,7 @@ if "rememberCheckResult(request, callbackTime, displayDiagnostic);" in scheduler
 
 rotation_text = ROTATION.read_text(encoding="utf-8")
 diagnostics_text = DIAGNOSTICS.read_text(encoding="utf-8")
-endpoint_backoff_method = store_text[store_text.find("public static boolean isEndpointBackedOff"):]
+endpoint_backoff_method = health_text[health_text.find("static boolean isEndpointBackedOff"):]
 endpoint_backoff_method = endpoint_backoff_method[:endpoint_backoff_method.find("\n    public static", 1)]
 if (
     "nextAllowedCheckTime(proxyInfo)" not in endpoint_backoff_method
@@ -381,20 +386,20 @@ if (
     or "state.consecutiveFailures > 0" not in endpoint_backoff_method
 ):
     print("Proxy check scheduler guard failed:")
-    print(f" - {STORE.relative_to(ROOT)}: rotation-visible endpoint backoff must use nextAllowedCheckTime, current elapsed time, and failure count without treating connected grace as failure backoff")
+    print(f" - {HEALTH.relative_to(ROOT)}: rotation-visible endpoint backoff must use nextAllowedCheckTime, current elapsed time, and failure count without treating connected grace as failure backoff")
     sys.exit(1)
 mark_failure_method = store_text[store_text.find("public static void markEndpointFailure"):]
 mark_failure_method = mark_failure_method[:mark_failure_method.find("\n    public static void markEndpointCooldown", 1)]
 if (
     "ProxyPhasePolicy.canBackoff(diagnostic)" not in mark_failure_method
-    or "rememberLiveFailure(proxyInfo, normalized, now)" not in mark_failure_method
-    or "rememberEndpointFailure" not in store_text
-    or "PROXY_CHECK_LIVE_FAILURE_DEDUP_MS" not in store_text
-    or "state.lastDiagnostic" not in store_text
-    or "state.lastCheckTime" not in store_text
+    or "ProxyHealthStore.rememberLiveFailure(proxyInfo, normalized, now)" not in mark_failure_method
+    or "rememberEndpointFailure" not in health_text
+    or "PROXY_CHECK_LIVE_FAILURE_DEDUP_MS" not in health_text
+    or "state.lastDiagnostic" not in health_text
+    or "state.lastCheckTime" not in health_text
 ):
     print("Proxy check scheduler guard failed:")
-    print(f" - {STORE.relative_to(ROOT)}: live current-connection failures must update shared endpoint backoff through the same failure helper without double-counting duplicate terminal stages")
+    print(f" - {STORE.relative_to(ROOT)} / {HEALTH.relative_to(ROOT)}: live current-connection failures must update shared endpoint backoff through the same failure helper without double-counting duplicate terminal stages")
     sys.exit(1)
 endpoint_cooldown_method = diagnostics_text[diagnostics_text.find("public static boolean hasFreshEndpointCooldown"):]
 endpoint_cooldown_method = endpoint_cooldown_method[:endpoint_cooldown_method.find("\n    public static", 1)]
@@ -480,11 +485,15 @@ def require_cancel_order(marker, label):
         rotation_text.rfind("} else {", 0, marker_index),
     )
     branch_text = rotation_text[branch_start:marker_index]
-    ordered_needles = [
-        "cancelScheduledSwitch(",
-    ]
     if label == "settings_changed":
-        ordered_needles.append("engine.onSettingsChanged();")
+        ordered_needles = [
+            "cancelScheduledSwitchRunnable(",
+            "engine.onSettingsChanged();",
+        ]
+    else:
+        ordered_needles = [
+            "cancelScheduledSwitch(",
+        ]
     last_index = -1
     for needle in ordered_needles:
         needle_index = branch_text.find(needle)

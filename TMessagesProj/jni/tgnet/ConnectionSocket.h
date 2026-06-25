@@ -33,6 +33,7 @@ public:
     void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, int32_t datacenterId = 0, bool mediaConnection = false);
     void setTimeout(time_t timeout);
     time_t getTimeout();
+    int32_t getCurrentNetworkType() const;
     bool isDisconnected();
     bool isCurrentMtProxyConnection();
     void dropConnection();

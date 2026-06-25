@@ -45,6 +45,10 @@ final class ProxyRotationEngine {
         cycle.reset();
     }
 
+    void onRotationSettingsApplied() {
+        cancelScheduledAttempt("rotation_settings_applied");
+    }
+
     void onConnected() {
         cancelScheduledAttempt("connected");
         cycle.reset();

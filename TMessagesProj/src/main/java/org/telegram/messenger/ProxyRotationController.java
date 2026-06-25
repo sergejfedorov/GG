@@ -14,6 +14,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
     public final static List<Integer> ROTATION_TIMEOUTS = Arrays.asList(
             5, 10, 15, 30, 60
     );
+    private static final Object ROTATION_SETTINGS_CHANGE = new Object();
 
     private final ProxyRotationEngine engine = new ProxyRotationEngine();
     private Runnable scheduledSwitchRunnable;
@@ -40,7 +41,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
         SharedConfig.currentProxy = info;
         ProxyRuntimeStateStore.markConnectionStarting(info);
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxyChangedByRotation);
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged);
+        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.proxySettingsChanged, ROTATION_SETTINGS_CHANGE);
         ConnectionsManager.setProxySettings(true, SharedConfig.currentProxy.address, SharedConfig.currentProxy.port, SharedConfig.currentProxy.username, SharedConfig.currentProxy.password, SharedConfig.currentProxy.secret);
         if ("fallback".equals(reason)) {
             log("switch fallback endpoint=" + endpoint(info) + " ping=" + info.ping);
@@ -60,7 +61,12 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.proxySettingsChanged) {
-            cancelScheduledSwitch("settings_changed");
+            cancelScheduledSwitchRunnable();
+            if (isRotationOwnedSettingsChange(args)) {
+                engine.onRotationSettingsApplied();
+                log("cancel rotation_settings_applied");
+                return;
+            }
             engine.onSettingsChanged();
             log("cancel settings_changed");
         } else if (id == NotificationCenter.didUpdateConnectionState && account == UserConfig.selectedAccount) {
@@ -109,10 +115,7 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
     }
 
     private void scheduleSwitch(long delayMs, String reason) {
-        if (scheduledSwitchRunnable != null) {
-            AndroidUtilities.cancelRunOnUIThread(scheduledSwitchRunnable);
-            scheduledSwitchRunnable = null;
-        }
+        cancelScheduledSwitchRunnable();
         ProxyRotationEngine.Attempt attempt = engine.beginScheduledAttempt(SharedConfig.currentProxy, delayMs, reason);
         final Runnable[] runnableHolder = new Runnable[1];
         runnableHolder[0] = () -> runScheduledSwitch(attempt, runnableHolder[0]);
@@ -139,11 +142,19 @@ public class ProxyRotationController implements NotificationCenter.NotificationC
     }
 
     private void cancelScheduledSwitch(String reason) {
+        cancelScheduledSwitchRunnable();
+        engine.cancelScheduledAttempt(reason);
+    }
+
+    private void cancelScheduledSwitchRunnable() {
         if (scheduledSwitchRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(scheduledSwitchRunnable);
             scheduledSwitchRunnable = null;
         }
-        engine.cancelScheduledAttempt(reason);
+    }
+
+    private boolean isRotationOwnedSettingsChange(Object... args) {
+        return args != null && args.length > 0 && args[0] == ROTATION_SETTINGS_CHANGE;
     }
 
     private long rotationTimeoutMillis() {

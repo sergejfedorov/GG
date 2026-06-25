@@ -1373,7 +1373,7 @@ void ConnectionsManager::processServerResponse(TLObject *message, int64_t messag
             Request *request = iter->get();
             if (request->respondsToMessageId(requestMid)) {
                 int32_t dcId = request->datacenterId != DEFAULT_DATACENTER_ID ? request->datacenterId : currentDatacenterId;
-                request->onComplete(response, nullptr, connection->currentNetworkType, timeMessage, requestMid, dcId);
+                request->onComplete(response, nullptr, connection->getCurrentNetworkType(), timeMessage, requestMid, dcId);
                 request->completed = true;
                 DEBUG_D("4) erase request %d 0x%" PRIx64, request->requestToken, request->messageId);
                 runningRequests.erase(iter);
@@ -1636,10 +1636,10 @@ void ConnectionsManager::processServerResponse(TLObject *message, int64_t messag
                         int32_t dcId = request->datacenterId != DEFAULT_DATACENTER_ID ? request->datacenterId : currentDatacenterId;
                         if (implicitError != nullptr || error2 != nullptr) {
                             isError = true;
-                            request->onComplete(nullptr, implicitError != nullptr ? implicitError : error2, connection->currentNetworkType, timeMessage, request->messageId, dcId);
+                            request->onComplete(nullptr, implicitError != nullptr ? implicitError : error2, connection->getCurrentNetworkType(), timeMessage, request->messageId, dcId);
                             delete error2;
                         } else {
-                            request->onComplete(response->result.get(), nullptr, connection->currentNetworkType, timeMessage, request->messageId, dcId);
+                            request->onComplete(response->result.get(), nullptr, connection->getCurrentNetworkType(), timeMessage, request->messageId, dcId);
                         }
                     }
 
@@ -2784,7 +2784,7 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
                         error->code = -123;
                         error->text = "RETRY_LIMIT";
                         int32_t dcId = request->datacenterId != DEFAULT_DATACENTER_ID ? request->datacenterId : currentDatacenterId;
-                        request->onComplete(nullptr, error, connection->currentNetworkType, 0, request->messageId, dcId);
+                        request->onComplete(nullptr, error, connection->getCurrentNetworkType(), 0, request->messageId, dcId);
                         delete error;
                         DEBUG_D("12) erase request %d 0x%" PRIx64, request->requestToken, request->messageId);
                         iter = runningRequests.erase(iter);

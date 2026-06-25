@@ -12,6 +12,7 @@ FILES = {
     "diagnostics": ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyCheckDiagnostics.java",
     "policy": ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyPhasePolicy.java",
     "store": ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyRuntimeStateStore.java",
+    "status": ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyStatusMirror.java",
     "endpoint_key": ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyEndpointKey.java",
     "connections_java": ROOT / "TMessagesProj/src/main/java/org/telegram/tgnet/ConnectionsManager.java",
     "notification_center": ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/NotificationCenter.java",
@@ -194,8 +195,8 @@ def main() -> None:
     require(
         "ProxyRuntimeStateStore.setChecking(proxyInfo, checking);" in text("scheduler")
         and "ProxyRuntimeStateStore.setChecking(listener.proxyInfo, checking);" in text("scheduler")
-        and "markCheckingIfNoFreshConcretePhase(proxyInfo);" in store_text
-        and "hasFreshConcreteProxyPhase(SharedConfig.ProxyInfo proxyInfo)" in store_text,
+        and "ProxyStatusMirror.markCheckingIfNoFreshConcretePhase(proxyInfo);" in store_text
+        and "hasFreshConcreteProxyPhase(SharedConfig.ProxyInfo proxyInfo)" in text("status"),
         "background proxy-check must not overwrite a fresh live/failure phase of the selected proxy with generic checking",
     )
     cooldown_idx = store_text.find("public static void markEndpointCooldown")
@@ -203,7 +204,8 @@ def main() -> None:
     require(
         cooldown_idx >= 0
         and "hasFreshConcreteProxyPhase(proxyInfo)" in cooldown_body
-        and "ProxyCheckDiagnostics.ENDPOINT_COOLDOWN" in cooldown_body,
+        and "ProxyStatusMirror.markEndpointCooldown(proxyInfo, now)" in cooldown_body
+        and "ProxyCheckDiagnostics.ENDPOINT_COOLDOWN" in text("status"),
         "endpoint cooldown must not overwrite a fresher concrete proxy phase",
     )
     require(
