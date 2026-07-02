@@ -31,7 +31,6 @@ checks = [
     (SCHEDULER, "activeRequest", "scheduler must keep a single active background check"),
     (HEALTH, "EndpointState", "health store must keep per-endpoint check state outside mutable ProxyInfo rows"),
     (HEALTH, "endpointStates", "health store must remember endpoint cooldowns across UI/rotation sweeps"),
-    (SCHEDULER, "enqueueStale", "scheduler must expose stale-check enqueueing"),
     (SCHEDULER, "enqueueNow", "scheduler must expose priority manual checks so GUI does not bypass the shared queue"),
     (SCHEDULER, "owner == null", "scheduler must reject ownerless checks because they cannot be cancelled or drained reliably"),
     (SCHEDULER, "isFresh", "scheduler must expose one freshness policy for UI and rotation"),
@@ -71,7 +70,7 @@ checks = [
     (SCHEDULER, "cancelProxyCheck", "scheduler must cancel the native active check when owner is cancelled"),
     (SCHEDULER, "onProxyCheckQueueFinished", "scheduler must notify owners when their sweep is drained"),
     (SCHEDULER, "proxy_check_scheduler ", "scheduler must use a stable log prefix for UI diagnostics"),
-    (SCHEDULER, "enqueue endpoint=", "scheduler must log enqueue decisions for UI diagnostics"),
+    (SCHEDULER, "enqueue_now endpoint=", "scheduler must log enqueue decisions for UI diagnostics"),
     (SCHEDULER, "start endpoint=", "scheduler must log check start for UI diagnostics"),
     (SCHEDULER, "finish result=", "scheduler must log check finish for UI diagnostics"),
     (SCHEDULER, "finish_ignored", "scheduler must log late native callbacks that no longer match the active Java request"),
@@ -140,9 +139,9 @@ if "proxyInfo.address.toLowerCase(Locale.US)" in endpoint_key_text:
     print("Proxy check scheduler guard failed:")
     print(f" - {ENDPOINT_KEY.relative_to(ROOT)}: endpointKey must normalize null host values before lowercasing")
     sys.exit(1)
-if "if (proxyInfo == null || owner == null)" not in scheduler_text or "if (proxyList == null || owner == null)" not in scheduler_text:
+if "if (proxyInfo == null || owner == null)" not in scheduler_text:
     print("Proxy check scheduler guard failed:")
-    print(f" - {SCHEDULER.relative_to(ROOT)}: enqueueNow/enqueueStale must reject ownerless checks at the public API boundary")
+    print(f" - {SCHEDULER.relative_to(ROOT)}: enqueueNow must reject ownerless checks at the public API boundary")
     sys.exit(1)
 if "long appliedTime = ProxyRuntimeStateStore.appliedTimeForProxyCheck(request.currentAccount, request.proxyInfo, time);" not in scheduler_text or "long callbackTime = ProxyRuntimeStateStore.callbackTimeForProxyCheck(request.currentAccount, request.proxyInfo, time);" not in scheduler_text:
     print("Proxy check scheduler guard failed:")
@@ -372,26 +371,17 @@ if "case NETWORK:" not in endpoint_key_text or "case EXACT:" not in endpoint_key
     print(f" - {ENDPOINT_KEY.relative_to(ROOT)}: phase-aware endpoint state must choose between host/port and exact proxy keys")
     sys.exit(1)
 
-enqueue_stale_start = scheduler_text.find("public static int enqueueStale(")
-enqueue_stale_end = scheduler_text.find("public static void cancelOwner(", enqueue_stale_start)
-enqueue_stale_body = scheduler_text[enqueue_stale_start:enqueue_stale_end]
-ordered_needles = [
-    "attachPending(proxyInfo, owner, callback, false)",
-    "clearDetachedCheckState(proxyInfo, \"enqueue\")",
-    "shouldCheck(proxyInfo, false)",
-]
-last_index = -1
-for needle in ordered_needles:
-    needle_index = enqueue_stale_body.find(needle)
-    if needle_index == -1 or needle_index <= last_index:
-        print("Proxy check scheduler guard failed:")
-        print(f" - {SCHEDULER.relative_to(ROOT)}: enqueueStale must attach to active endpoint checks before deciding a ProxyInfo is already checking")
-        sys.exit(1)
-    last_index = needle_index
-
-if "shouldCheck(proxyInfo, false)" not in enqueue_stale_body:
+if "enqueueStale" in scheduler_text:
     print("Proxy check scheduler guard failed:")
-    print(f" - {SCHEDULER.relative_to(ROOT)}: background sweeps must use cooldown-aware non-forced checks")
+    print(f" - {SCHEDULER.relative_to(ROOT)}: sweep-style stale enqueueing must not return; checks are explicit (enqueueNow) and endpoint cadence is native (nextAllowedCheckTime)")
+    sys.exit(1)
+if "failureBackoffMs" in scheduler_text or "cooldownMs" in scheduler_text:
+    print("Proxy check scheduler guard failed:")
+    print(f" - {SCHEDULER.relative_to(ROOT)}: scheduler must not own an endpoint retry clock; hold windows come from the native retry authority via ProxyHealthStore")
+    sys.exit(1)
+if "ProxyRuntimeStateStore.nextAllowedCheckTime(proxyInfo)" not in scheduler_text:
+    print("Proxy check scheduler guard failed:")
+    print(f" - {SCHEDULER.relative_to(ROOT)}: shouldCheck must gate on the store-provided nextAllowedCheckTime (native-fed hold), not local math")
     sys.exit(1)
 should_check_method = scheduler_text[scheduler_text.find("private static boolean shouldCheck"):]
 should_check_method = should_check_method[:should_check_method.find("\n    public static", 1)]

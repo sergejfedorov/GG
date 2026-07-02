@@ -76,10 +76,21 @@ terminal-diagnostic derivation, failure evidence.
    xorshift stream — never all-zero (rejection sampling would spin forever)
    and never asserted exactly (tests use jitter envelopes).
 
+9. **Done (scheduler is a pure executor):** the sweep-style
+   `enqueueStale` API was removed outright — background check sweeps are
+   now impossible by construction, not just forbidden by guards. Checks
+   are explicit (`enqueueNow` from the UI); per-endpoint cadence is the
+   native hold via `ProxyHealthStore.nextCheckTime` →
+   `nextAllowedCheckTime`; the only timing the scheduler owns is
+   `PROXY_CHECK_SPACING_MS` start-to-start smoothing of its single-active
+   queue (submission hygiene, not a retry clock — documented in code and
+   enforced: `check_proxy_check_scheduler.py` forbids `failureBackoffMs`/
+   `cooldownMs` math in the scheduler and requires the
+   `nextAllowedCheckTime` gate). The foreground live-ping interval in
+   `ProxyListActivity` is a deliberate UI-freshness setting, not a retry
+   clock.
+
 ## Next iterations
 
-- `ProxyCheckScheduler` still owns its own check *cadence* (sweep timing);
-  its per-endpoint pacing already follows the native hold via
-  `ProxyHealthStore.nextCheckTime` → `nextAllowedCheckTime`. Folding the
-  sweep itself onto native verdict events would make the scheduler a pure
-  executor.
+- Device build/test remains the gate for the Java/JNI changes (no local
+  NDK or javac verification).

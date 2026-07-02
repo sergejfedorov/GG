@@ -4317,24 +4317,56 @@ void ConnectionSocket::closeMtProxyPostClientHelloResponse(const char *diagnosti
 // Connection layer reads the resolved diagnostic and the suggested reconnect
 // hold from this object.
 void ConnectionSocket::closeSocket(int32_t reason, int32_t error) {
+    // The pipeline below is structural: each step is a named method and the
+    // guard suite pins their order. Step semantics live on the methods.
     // [close-step 1/8] Reentry guard: a socket is closed exactly once.
+    if (!closeStepReentryGuard(reason, error)) {
+        return;
+    }
+    // [close-step 2/8] Transport gate.
+    closeStepTransportGate();
+    // [close-step 3/8] Diagnostic resolution: the only inter-step data flow.
+    CloseDiagnosticResolution closeResolution = closeStepResolveDiagnostic(reason, error);
+    // [close-step 4/8] Observability.
+    closeStepLogDisconnect(reason, error, closeResolution);
+    // [close-step 5/8] Verdict publication (before the probe lease release).
+    closeStepPublishVerdict(reason, closeResolution);
+    // [close-step 6/8] Resource release.
+    closeStepReleaseResources();
+    // [close-step 7/8] OS teardown.
+    closeStepOsTeardown();
+    // [close-step 8/8] State reset, then notify the Connection layer last.
+    closeStepResetStateAndNotify(reason, error);
+}
+
+// [close-step 1/8] Reentry guard: a socket is closed exactly once. Returns
+// false when the close was already performed.
+bool ConnectionSocket::closeStepReentryGuard(int32_t reason, int32_t error) {
     lastEventTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMonotonicMillis();
     if (socketCloseNotified) {
         if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup close_ignored_already_closed reason=%s error=%s phase=%s transport_state=%s epoll_registered=%d admission_active=%d admission_queued=%d tcp_gate_active=%d waiting_resolve=%d proxy_state=%d tls_state=%d", this, mtProxyDisconnectReasonName(reason), mtProxySocketErrorName(error), proxyCheckDiagnostic.c_str(), transportStateName(currentTransportState), epollRegistered ? 1 : 0, proxyHandshakeAdmissionActive ? 1 : 0, proxyHandshakeAdmissionQueued ? 1 : 0, proxyEndpointTcpConnectActive ? 1 : 0, waitingForHostResolve.empty() ? 0 : 1, (int) proxyAuthState, (int) tlsState);
-        return;
+        return false;
     }
-    // [close-step 2/8] Transport gate: mark dead-for-writes and enter Closing
-    // before any diagnostic work so concurrent write paths stop immediately.
+    return true;
+}
+
+// [close-step 2/8] Transport gate: mark dead-for-writes and enter Closing
+// before any diagnostic work so concurrent write paths stop immediately.
+void ConnectionSocket::closeStepTransportGate() {
     markConnectionDeadForWrites("closeSocket");
     logTransportSnapshot("close_start", "closeSocket");
     checkCloseSocketAction("closeSocket");
     setTransportState(TransportState::Closing, "closeSocket");
     setSocketCloseNotified(true, "closeSocket");
-    // [close-step 3/8] Diagnostic resolution: capture forced suppression,
-    // reclassify early app-data drops, derive the terminal diagnostic
-    // (pre-I/O terminal verdicts survive via MtProxyPhase::isPreIoTerminalVerdict),
-    // and decide shadow-by-fresh-success suppression. proxyCheckDiagnostic is
-    // final after this step; later steps only read it.
+}
+
+// [close-step 3/8] Diagnostic resolution: capture forced suppression,
+// reclassify early app-data drops, derive the terminal diagnostic
+// (pre-I/O terminal verdicts survive via MtProxyPhase::isPreIoTerminalVerdict),
+// and decide shadow-by-fresh-success suppression. proxyCheckDiagnostic is
+// final after this step; later steps only read the returned resolution.
+ConnectionSocket::CloseDiagnosticResolution ConnectionSocket::closeStepResolveDiagnostic(int32_t reason, int32_t error) {
+    CloseDiagnosticResolution resolution;
     bool forcedSuppressProxyCloseDiagnostic = suppressNextProxyCloseDiagnostic;
     suppressNextProxyCloseDiagnostic = false;
     proxyCloseDiagnosticSuppressed = forcedSuppressProxyCloseDiagnostic;
@@ -4379,45 +4411,62 @@ void ConnectionSocket::closeSocket(int32_t reason, int32_t error) {
             suppressProxyCloseDiagnostic = true;
         }
     }
-    // [close-step 4/8] Observability: the mtproxy_disconnect snapshot and the
-    // suppressed/rotate branch log the RESOLVED diagnostic from step 3.
+    resolution.terminalDiagnostic = terminalDiagnostic;
+    resolution.suppress = suppressProxyCloseDiagnostic;
+    resolution.shadowedSocketFailure = shadowedSocketFailure;
+    resolution.shadowedHoldMs = shadowedSocketFailureHoldMs;
+    return resolution;
+}
+
+// [close-step 4/8] Observability: the mtproxy_disconnect snapshot and the
+// suppressed/rotate branch log the RESOLVED diagnostic from step 3.
+void ConnectionSocket::closeStepLogDisconnect(int32_t reason, int32_t error, const CloseDiagnosticResolution &resolution) {
     if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_disconnect reason=%d reason_text=%s error=%d error_text=%s secret_kind=%s is_faketls=%d is_wss=%d transport_state=%s epoll_registered=%d admission_active=%d admission_queued=%d tcp_gate_active=%d waiting_resolve=%d proxy_state=%d tls_state=%d bytes_read=%zu pending_hello=%u/%u pending=%u/%u first_tls_sent=%d first_tls_recv=%d first_plain_sent=%d first_plain_recv=%d tls_frames_completed=%u", this, reason, mtProxyDisconnectReasonName(reason), error, mtProxySocketErrorName(error), currentSecretKind, currentSecretIsFakeTls ? 1 : 0, currentTransportWss ? 1 : 0, transportStateName(currentTransportState), epollRegistered ? 1 : 0, proxyHandshakeAdmissionActive ? 1 : 0, proxyHandshakeAdmissionQueued ? 1 : 0, proxyEndpointTcpConnectActive ? 1 : 0, waitingForHostResolve.empty() ? 0 : 1, (int) proxyAuthState, (int) tlsState, bytesRead, pendingClientHelloOffset, pendingClientHelloSize, pendingTlsFrameOffset, pendingTlsFrameSize, mtproxyFirstTlsFrameSentLogged ? 1 : 0, mtproxyFirstTlsDataReceivedLogged ? 1 : 0, mtproxyFirstPlainDataSentLogged ? 1 : 0, mtproxyFirstPlainDataReceivedLogged ? 1 : 0, mtproxyTlsFrameCompletedCount);
-    if (suppressProxyCloseDiagnostic) {
+    if (resolution.suppress) {
         proxyCloseDiagnosticSuppressed = true;
-        if (shadowedSocketFailure) {
+        if (resolution.shadowedSocketFailure) {
             publishProxyConnectionStage("shadowed_socket_failure");
             const char *heldBy = currentSecretIsFakeTls ? "first_tls_app_recv" : "first_mtproxy_packet_recv";
-            if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup shadowed_socket_failure phase=%s held_by=%s hold_ms=%ld endpoint=%s network_key=%s", this, proxyCheckDiagnostic.c_str(), heldBy, (long) shadowedSocketFailureHoldMs, currentMtProxyEndpointKey.c_str(), currentMtProxyNetworkEndpointKey.c_str());
+            if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup shadowed_socket_failure phase=%s held_by=%s hold_ms=%ld endpoint=%s network_key=%s", this, proxyCheckDiagnostic.c_str(), heldBy, (long) resolution.shadowedHoldMs, currentMtProxyEndpointKey.c_str(), currentMtProxyNetworkEndpointKey.c_str());
         }
         if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup close_diagnostic_suppressed phase=%s reason=%s first_tls_sent=%d first_tls_recv=%d first_plain_sent=%d first_plain_recv=%d", this, proxyCheckDiagnostic.c_str(), mtProxyDisconnectReasonName(reason), mtproxyFirstTlsFrameSentLogged ? 1 : 0, mtproxyFirstTlsDataReceivedLogged ? 1 : 0, mtproxyFirstPlainDataSentLogged ? 1 : 0, mtproxyFirstPlainDataReceivedLogged ? 1 : 0);
     } else {
         rotateMtProxyTlsProfileOnFailureIfNeeded(reason, error);
     }
-    // [close-step 5/8] Verdict publication: release the TCP connect gate, then
-    // publish close_diagnostic and record the endpoint failure. This MUST run
-    // before the probe lease release in step 6 so the coordinator still sees a
-    // live owner token when the failure is recorded (HANG-7).
+}
+
+// [close-step 5/8] Verdict publication: release the TCP connect gate, then
+// publish close_diagnostic and record the endpoint failure. This MUST run
+// before the probe lease release in step 6 so the coordinator still sees a
+// live owner token when the failure is recorded (HANG-7).
+void ConnectionSocket::closeStepPublishVerdict(int32_t reason, const CloseDiagnosticResolution &resolution) {
     releaseMtProxyEndpointTcpConnect("closeSocket");
-    if (!suppressProxyCloseDiagnostic && reason != 0 && isCurrentMtProxyConnection() && !terminalDiagnostic.empty()) {
-        if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup close_diagnostic phase=%s", this, terminalDiagnostic.c_str());
-        if (mtProxySocketObservationIsHighRiskPhase(terminalDiagnostic.c_str())) {
+    if (!resolution.suppress && reason != 0 && isCurrentMtProxyConnection() && !resolution.terminalDiagnostic.empty()) {
+        if (LOGS_ENABLED) DEBUG_D("connection(%p) mtproxy_startup close_diagnostic phase=%s", this, resolution.terminalDiagnostic.c_str());
+        if (mtProxySocketObservationIsHighRiskPhase(resolution.terminalDiagnostic.c_str())) {
             MtProxySocketObservation observation;
-            observation.phase = terminalDiagnostic.c_str();
+            observation.phase = resolution.terminalDiagnostic.c_str();
             observation.reason = "closeSocket";
             observation.recordEndpointFailure = true;
             publishMtProxySocketObservation(observation);
         } else {
-            publishProxyConnectionStage(terminalDiagnostic.c_str());
-            recordMtProxyEndpointFailure(terminalDiagnostic.c_str(), "closeSocket");
+            publishProxyConnectionStage(resolution.terminalDiagnostic.c_str());
+            recordMtProxyEndpointFailure(resolution.terminalDiagnostic.c_str(), "closeSocket");
         }
     }
-    // [close-step 6/8] Resource release: probe lease (after the failure was
-    // recorded), admission slot, and manager detach.
+}
+
+// [close-step 6/8] Resource release: probe lease (after the failure was
+// recorded), admission slot, and manager detach.
+void ConnectionSocket::closeStepReleaseResources() {
     releaseMtProxyProbeLease();
     releaseProxyHandshakeAdmission(false, "closeSocket");
     cancelProxyHandshakeAdmission();
     ConnectionsManager::getInstance(instanceNum).detachConnection(this);
-    // [close-step 7/8] OS teardown: epoll deregistration and native socket close.
+}
+
+// [close-step 7/8] OS teardown: epoll deregistration and native socket close.
+void ConnectionSocket::closeStepOsTeardown() {
     if (socketFd >= 0) {
         if (epollRegistered) {
             if (canUnregisterEpollSocket()) {
@@ -4432,9 +4481,12 @@ void ConnectionSocket::closeSocket(int32_t reason, int32_t error) {
         }
         setSocketFd(-1, "close_native_socket");
     }
-    // [close-step 8/8] State reset to Idle, then notify the Connection layer.
-    // onDisconnected must stay the LAST statement: it reads the resolved
-    // diagnostic and consumeSuggestedReconnectHoldMs() from this object.
+}
+
+// [close-step 8/8] State reset to Idle, then notify the Connection layer.
+// onDisconnected must stay the LAST statement: it reads the resolved
+// diagnostic and consumeSuggestedReconnectHoldMs() from this object.
+void ConnectionSocket::closeStepResetStateAndNotify(int32_t reason, int32_t error) {
     setWaitingForHostResolve("", "closeSocket_cleanup");
     setMtProxyTcpConnectAttemptStarted(false, "closeSocket_cleanup");
     setMtProxyDnsResolveAttemptStarted(false, "closeSocket_cleanup");

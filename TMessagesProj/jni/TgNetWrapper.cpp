@@ -7,7 +7,7 @@
 #include "tgnet/ConnectionSocket.h"
 #include "tgnet/FileLog.h"
 #include "tgnet/Handshake.h"
-#include "tgnet/MtProxyOptions.h"
+#include "mtproxy/MtProxyOptions.h"
 #include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/bn.h>

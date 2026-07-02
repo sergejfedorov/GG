@@ -88,6 +88,23 @@ private:
 
     int32_t checkSocketError(int32_t *error);
     void closeSocket(int32_t reason, int32_t error);
+    // closeSocket is a dispatcher over these pipeline steps, in execution
+    // order ([close-step N/8]). Step 3's resolution is the only data that
+    // flows between steps; later steps must not re-derive diagnostics.
+    struct CloseDiagnosticResolution {
+        std::string terminalDiagnostic;
+        bool suppress = false;
+        bool shadowedSocketFailure = false;
+        int64_t shadowedHoldMs = 0;
+    };
+    bool closeStepReentryGuard(int32_t reason, int32_t error);
+    void closeStepTransportGate();
+    CloseDiagnosticResolution closeStepResolveDiagnostic(int32_t reason, int32_t error);
+    void closeStepLogDisconnect(int32_t reason, int32_t error, const CloseDiagnosticResolution &resolution);
+    void closeStepPublishVerdict(int32_t reason, const CloseDiagnosticResolution &resolution);
+    void closeStepReleaseResources();
+    void closeStepOsTeardown();
+    void closeStepResetStateAndNotify(int32_t reason, int32_t error);
     bool matchesMtProxyEndpointKey(const std::string &endpointKey);
     bool matchesMtProxyProbeKey(const std::string &probeKey);
     void cancelMtProxyEndpointAttempt(const char *reason);
