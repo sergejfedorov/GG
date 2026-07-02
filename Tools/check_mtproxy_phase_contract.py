@@ -27,6 +27,7 @@ POLICY = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyPhasePo
 SCHEDULER = ROOT / "TMessagesProj/src/main/java/org/telegram/messenger/ProxyCheckScheduler.java"
 SOCKET = ROOT / "TMessagesProj/jni/tgnet/ConnectionSocket.cpp"
 SOCKET_H = ROOT / "TMessagesProj/jni/tgnet/ConnectionSocket.h"
+ENDPOINT_RECORDER = ROOT / "TMessagesProj/jni/mtproxy/MtProxyEndpointRecorder.cpp"
 STARTUP_TIMELINE = ROOT / "TMessagesProj/jni/mtproxy/MtProxyStartupTimeline.cpp"
 CONNECTION = ROOT / "TMessagesProj/jni/tgnet/Connection.cpp"
 ANALYZER = ROOT / "Tools/analyze_mtproxy_markers.py"
@@ -78,8 +79,8 @@ def native_constant_values(source: str, constants: dict[str, str]) -> set[str]:
     }
 
 
-def native_diagnostics(socket: str, socket_h: str, startup_timeline: str, connection: str, native_constants: dict[str, str]) -> set[str]:
-    native_source = socket + "\n" + startup_timeline
+def native_diagnostics(socket: str, socket_h: str, endpoint_recorder: str, startup_timeline: str, connection: str, native_constants: dict[str, str]) -> set[str]:
+    native_source = socket + "\n" + endpoint_recorder + "\n" + startup_timeline
     phases = set(re.findall(r'publishProxyConnectionStage\("([a-z0-9_]+)"\)', native_source))
     phases |= set(re.findall(r'proxyCheckDiagnostic\s*=\s*"([a-z0-9_]+)"', native_source))
     phases |= set(re.findall(r'return "([a-z0-9_]+)"', startup_timeline))
@@ -87,7 +88,7 @@ def native_diagnostics(socket: str, socket_h: str, startup_timeline: str, connec
     phases |= set(re.findall(r'if \(responseBytes [^}]+return "([a-z0-9_]+)"', socket))
     phases |= set(re.findall(r'proxyCheckDiagnostic\s*=\s*"([a-z0-9_]+)"', socket_h))
     phases |= set(re.findall(r'mtproxy_startup (reconnect_backoff_suppressed)', connection))
-    phases |= native_constant_values(socket + "\n" + socket_h + "\n" + startup_timeline + "\n" + connection, native_constants)
+    phases |= native_constant_values(socket + "\n" + socket_h + "\n" + endpoint_recorder + "\n" + startup_timeline + "\n" + connection, native_constants)
     phases.discard("wss_tls_handshake")
     phases -= {
         "none",
@@ -128,6 +129,7 @@ def main() -> int:
     scheduler = text(SCHEDULER)
     socket = text(SOCKET)
     socket_h = text(SOCKET_H)
+    endpoint_recorder = text(ENDPOINT_RECORDER)
     # The terminal-diagnostic engine lives in the module; scan it together
     # with the timeline so phases it assigns stay in the bijection.
     startup_timeline = text(STARTUP_TIMELINE) + "\n" + text(
@@ -247,7 +249,7 @@ def main() -> int:
         "ProxyPhasePolicy key scope must match contract network-key phases",
     )
     require(
-        native_diagnostics(socket, socket_h, startup_timeline, connection, native_constants) == native_phase_names(),
+        native_diagnostics(socket, socket_h, endpoint_recorder, startup_timeline, connection, native_constants) == native_phase_names(),
         "native MTProxy diagnostics must match contract native phases",
     )
     require(
