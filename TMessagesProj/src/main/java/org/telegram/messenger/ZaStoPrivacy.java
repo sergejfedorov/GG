@@ -24,22 +24,22 @@ public final class ZaStoPrivacy {
     public static final String KEY_DISABLE_ADS = "DISABLE_ADS";
 
     /** Keep messages that the remote side deletes (anti-delete), marked instead of removed. */
-    public static boolean KEEP_DELETED = true;
+    public static boolean KEEP_DELETED = false;
 
     /** Keep self-destruct / TTL / view-once media; never run the local destruction. */
-    public static boolean KEEP_EPHEMERAL = true;
+    public static boolean KEEP_EPHEMERAL = false;
 
     /** Keep previous versions of remotely-edited messages so the edit history can be viewed. */
-    public static boolean KEEP_EDIT_HISTORY = true;
+    public static boolean KEEP_EDIT_HISTORY = false;
 
     /** Allow saving/forwarding of content-protected (noforwards) media and stories. */
-    public static boolean ALLOW_SAVE_PROTECTED = true;
+    public static boolean ALLOW_SAVE_PROTECTED = false;
 
     /** Do not apply FLAG_SECURE on viewers of other people's content (allow screenshots). */
-    public static boolean ALLOW_SCREENSHOTS = true;
+    public static boolean ALLOW_SCREENSHOTS = false;
 
     /** Do not send the "took a screenshot" service message to the other party. */
-    public static boolean MUTE_SCREENSHOT_PING = true;
+    public static boolean MUTE_SCREENSHOT_PING = false;
 
     /** Disable Telegram/client sponsored messages, sponsored peers, video ads, and promo dialogs. */
     public static boolean DISABLE_ADS = true;
@@ -52,12 +52,12 @@ public final class ZaStoPrivacy {
     public static void load() {
         try {
             SharedPreferences p = prefs();
-            KEEP_DELETED = p.getBoolean(KEY_KEEP_DELETED, true);
-            KEEP_EPHEMERAL = p.getBoolean(KEY_KEEP_EPHEMERAL, true);
-            KEEP_EDIT_HISTORY = p.getBoolean(KEY_KEEP_EDIT_HISTORY, true);
-            ALLOW_SAVE_PROTECTED = p.getBoolean(KEY_ALLOW_SAVE_PROTECTED, true);
-            ALLOW_SCREENSHOTS = p.getBoolean(KEY_ALLOW_SCREENSHOTS, true);
-            MUTE_SCREENSHOT_PING = p.getBoolean(KEY_MUTE_SCREENSHOT_PING, true);
+            KEEP_DELETED = p.getBoolean(KEY_KEEP_DELETED, false);
+            KEEP_EPHEMERAL = p.getBoolean(KEY_KEEP_EPHEMERAL, false);
+            KEEP_EDIT_HISTORY = p.getBoolean(KEY_KEEP_EDIT_HISTORY, false);
+            ALLOW_SAVE_PROTECTED = p.getBoolean(KEY_ALLOW_SAVE_PROTECTED, false);
+            ALLOW_SCREENSHOTS = p.getBoolean(KEY_ALLOW_SCREENSHOTS, false);
+            MUTE_SCREENSHOT_PING = p.getBoolean(KEY_MUTE_SCREENSHOT_PING, false);
             DISABLE_ADS = p.getBoolean(KEY_DISABLE_ADS, true);
         } catch (Exception ignore) {
         }
